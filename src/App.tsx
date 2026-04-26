@@ -334,6 +334,8 @@ export default function App() {
     setBalance(0);
   };
 
+  const isMobile = typeof window !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
   const connectRealWallet = async () => {
     setWalletError(null);
     setIsConnectingWallet(true);
@@ -369,7 +371,11 @@ export default function App() {
         setIsConnectingWallet(false);
       }
     } else {
-      setWalletError("No Web3 provider detected (e.g. MetaMask). Please install a wallet extension.");
+      if (isMobile) {
+        setWalletError("No Web3 provider detected. On mobile, please click the button below to open in the MetaMask App.");
+      } else {
+        setWalletError("No Web3 provider detected. If you are viewing this in the AI Studio preview iframe, please open the app in a new standalone tab to allow MetaMask injection.");
+      }
       setIsConnectingWallet(false);
     }
   };
@@ -439,6 +445,17 @@ export default function App() {
                   </div>
                   <ChevronRight size={16} className="text-gray-600 group-hover:text-brand-cyan" />
                 </button>
+                
+                {isMobile && !((window as any).ethereum) && (
+                  <a 
+                    href={`https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full flex items-center justify-center px-4 py-2 bg-brand-cyan text-black font-bold text-xs rounded transition-all hover:bg-brand-cyan/80"
+                  >
+                    Open in MetaMask App
+                  </a>
+                )}
 
                 <div className="relative flex py-2 items-center">
                   <div className="flex-grow border-t border-border-dim/50"></div>

@@ -1,8 +1,4 @@
-import { GoogleGenAI, Type } from "@google/genai";
-
-const apiKey = process.env.GEMINI_API_KEY || '';
-const hasApiKey = apiKey.length > 5 && !apiKey.includes('undefined');
-const ai = hasApiKey ? new GoogleGenAI({ apiKey }) : null;
+import { Type } from "@google/genai";
 
 export interface AIResult {
   prediction: string;
@@ -23,10 +19,6 @@ export async function getGeminiPrediction(data: {
   change24h: number;
   newsSentiment?: { score: number; label: string; summary: string };
 }): Promise<AIResult> {
-  if (!ai) {
-     console.warn('Gemini API key missing or invalid, using computational fallback');
-     return getComputationalPrediction(data);
-  }
 
   const prompt = `You are an advanced multi-layer AI trading engine designed for high-performance execution and adaptive learning.
 Your goal is to maximize risk-adjusted returns while preserving capital.
@@ -75,12 +67,12 @@ FINAL RULE:
 Output JSON:`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
+    const response = await fetch('/api/predict-gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt,
+        schema: {
           type: Type.OBJECT,
           properties: {
             action: { type: Type.STRING, description: "BUY | SELL | HOLD" },
@@ -93,25 +85,34 @@ Output JSON:`;
           },
           required: ["action", "confidence", "entry_price", "stop_loss", "take_profit", "position_size", "reason"]
         }
-      }
+      })
     });
 
-    const parsed = JSON.parse(response.text || '{}');
+    if (!response.ok) {
+        const text = await response.text();
+        if ((response.status === 404 && text.includes('Gemini AI unavailable')) || text.includes('API key not valid') || text.includes('API_KEY_INVALID')) {
+             throw new Error('MISSING_API_KEY');
+        }
+        throw new Error(text);
+    }
+
+    const parsed = await response.json();
     return {
       prediction: JSON.stringify(parsed, null, 2),
       confidence: parsed.confidence,
       provider: 'Gemini Execution Engine'
     };
   } catch (error: any) {
-    console.error('Gemini Prediction Failed:', error.message);
-    throw new Error(error.message || 'AI Engine failed to generate analysis.');
+    if (error.message === 'MISSING_API_KEY') {
+       console.log('Gemini API key missing, using computational fallback.');
+    } else {
+       console.error('Gemini Prediction Failed, falling back to computational model:', error.message);
+    }
+    return getComputationalPrediction(data);
   }
 }
 
 export async function getNewsSentiment(news: { title: string }[]) {
-  if (!ai) {
-    return { score: 0, summary: "Sentiment analysis unavailable (API key missing)", label: "Neutral", impactDrivers: [] };
-  }
   const newsTitles = news.map(n => `- ${n.title}`).join('\n');
   const prompt = `Perform multi-source NLP sentiment synthesis on these headlines:
 ${newsTitles}
@@ -124,12 +125,12 @@ Analyze for:
 Output JSON: score (-1 to 1), summary (string), label (string), impactDrivers (string array).`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
+    const response = await fetch('/api/predict-gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt,
+        schema: {
           type: Type.OBJECT,
           properties: {
             score: { type: Type.NUMBER },
@@ -139,11 +140,22 @@ Output JSON: score (-1 to 1), summary (string), label (string), impactDrivers (s
           },
           required: ["score", "summary", "label", "impactDrivers"]
         }
-      }
+      })
     });
 
-    return JSON.parse(response.text || '{}');
+    if (!response.ok) {
+        const text = await response.text();
+        if ((response.status === 404 && text.includes('Gemini AI unavailable')) || text.includes('API key not valid') || text.includes('API_KEY_INVALID')) {
+             throw new Error('MISSING_API_KEY');
+        }
+        throw new Error(text);
+    }
+    
+    return await response.json();
   } catch (error: any) {
+    if (error.message === 'MISSING_API_KEY') {
+       return { score: 0, summary: "Sentiment analysis unavailable (API key missing). Reverting to basic indicators.", label: "Neutral", impactDrivers: [] };
+    }
     if (error.message?.includes('429') || error.message?.includes('RESOURCE_EXHAUSTED')) {
       return { score: 0, summary: "Sentiment analysis hitting rate limits (Quota Exceeded)", label: "Neutral", impactDrivers: ["Quota Limit Reached"] };
     }
@@ -152,9 +164,10 @@ Output JSON: score (-1 to 1), summary (string), label (string), impactDrivers (s
       return { score: 0, summary: "Sentiment analysis hitting API errors", label: "Neutral", impactDrivers: ["API Error"] };
     }
     console.error('Gemini Sentiment Error:', error.message);
-    return { score: 0, summary: "Sentiment analysis failed", label: "Neutral", impactDrivers: [] };
+    return { score: 0, summary: "Sentiment analysis unavailable. Reverting to basic indicators.", label: "Neutral", impactDrivers: [] };
   }
 }
+
 
 export function getComputationalPrediction(data: any): AIResult {
   let score = 0;

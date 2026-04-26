@@ -27,6 +27,17 @@ async function startServer() {
     }
     return anthropicClient;
   }
+  
+  const { GoogleGenAI } = await import('@google/genai');
+  let googleAI: any = null;
+  function getGoogleAI() {
+    const apiKey = process.env.GEMINI_API_KEY || '';
+    const hasApiKey = apiKey.length > 5 && !apiKey.includes('undefined') && apiKey !== 'your_gemini_api_key_here';
+    if (!googleAI && hasApiKey) {
+      googleAI = new GoogleGenAI({ apiKey });
+    }
+    return googleAI;
+  }
 
   // --- API ROUTES ---
 
@@ -165,6 +176,35 @@ async function startServer() {
     }
   });
 
+  // Gemini API Proxy
+  app.post('/api/predict-gemini', async (req, res) => {
+    try {
+      const ai = getGoogleAI();
+      if (!ai) {
+        return res.status(404).json({ error: 'Gemini AI unavailable (Missing API Key on Server)' });
+      }
+
+      const { prompt, schema } = req.body;
+      const response = await ai.models.generateContent({
+        model: "gemini-flash-latest",
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: schema
+        }
+      });
+      
+      const parsed = JSON.parse(response.text || '{}');
+      res.json(parsed);
+    } catch (err: any) {
+      if (err.message?.includes('API key not valid') || err.message?.includes('API_KEY_INVALID')) {
+        return res.status(404).json({ error: 'Gemini AI unavailable (Invalid API Key on Server)' });
+      }
+      console.error('Gemini proxy error:', err.message);
+      res.status(500).json({ error: 'Gemini Analysis failed: ' + err.message });
+    }
+  });
+
 // AI Prediction Proxy (Anthropic Fallback Only)
   app.post('/api/predict-fallback', async (req, res) => {
     try {
@@ -190,8 +230,11 @@ Analysis: 2 sentences.`;
       res.json({ prediction: contentBlock.text, provider: 'Claude 3.5' });
 
     } catch (err: any) {
+      if (err.message?.includes('authentication') || err.message?.includes('api_key') || err.status === 401) {
+         return res.status(401).json({ error: 'Auth failed for Anthropic (Invalid API Key)' });
+      }
       console.error('Anthropic Fallback error:', err.message);
-      res.status(500).json({ error: 'Analysis failed' });
+      res.status(500).json({ error: 'Analysis failed: ' + err.message });
     }
   });
 

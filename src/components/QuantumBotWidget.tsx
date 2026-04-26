@@ -10,6 +10,7 @@ import {
   Hash,
 } from "lucide-react";
 import { cn } from "../lib/utils";
+import { Radar, RadarChart, PolarGrid, PolarAngleAxis, ResponsiveContainer } from "recharts";
 
 import { Transaction } from "../types";
 
@@ -481,30 +482,48 @@ export function QuantumBotWidget({
                 </div>
                 <div className="text-sm font-mono text-white">{tradeCount}</div>
               </div>
-              <div className="flex flex-col w-[60%]">
+              <div className="flex flex-col w-full h-[120px] mt-2">
                 <div className="text-[9px] text-gray-500 font-mono mb-1 flex justify-between items-center w-full">
-                  <span>MULTI-FACTOR CONFLUENCE</span>
+                  <span>MULTI-FACTOR CONFLUENCE RADAR</span>
+                  {technicalSignal && (
+                    <div className="flex gap-2">
+                      <span className={cn(technicalSignal.rsi < 40 ? "text-brand-cyan" : technicalSignal.rsi > 60 ? "text-brand-red" : "text-gray-400")}>RSI:{technicalSignal.rsi}</span>
+                      <span className={cn(technicalSignal.macdSignal === 'bullish' ? "text-brand-cyan" : "text-brand-red")}>MACD:{technicalSignal.macdSignal[0].toUpperCase()}</span>
+                      <span className={cn(technicalSignal.trend === 'up' ? "text-brand-cyan" : "text-brand-red")}>TRND:{technicalSignal.trend[0].toUpperCase()}</span>
+                    </div>
+                  )}
                 </div>
-                <div className="w-full h-1.5 bg-[#050505] border border-[#1F1F1F] rounded-full overflow-hidden relative mb-1">
-                  <div className="absolute inset-0 w-1/2 border-r border-[#1F1F1F]"></div>
-                  <div
-                    className={cn(
-                      "absolute top-0 bottom-0 transition-all duration-500 ease-in-out",
-                      (aiSignal || '').toLowerCase().includes("bullish")
-                        ? "left-1/2 w-1/2 bg-brand-cyan shadow-[0_0_8px_rgba(0,229,255,0.8)]"
-                        : (aiSignal || '').toLowerCase().includes("bearish")
-                          ? "right-1/2 w-1/2 bg-brand-red shadow-[0_0_8px_rgba(255,51,102,0.8)]"
-                          : "left-1/2 w-0 bg-transparent",
-                    )}
-                  ></div>
+                <div className="flex-1 w-full relative">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RadarChart cx="50%" cy="50%" outerRadius="70%" data={[
+                      {
+                        subject: 'AI Engine',
+                        bull: (aiSignal || '').toLowerCase().includes("strong bullish") ? 100 : (aiSignal || '').toLowerCase().includes("bullish") ? 65 : 10,
+                        bear: (aiSignal || '').toLowerCase().includes("strong bearish") ? 100 : (aiSignal || '').toLowerCase().includes("bearish") ? 65 : 10,
+                      },
+                      {
+                        subject: 'Momentum',
+                        bull: technicalSignal ? (technicalSignal.rsi < 30 ? 100 : technicalSignal.rsi < 45 ? 60 : 10) : 10,
+                        bear: technicalSignal ? (technicalSignal.rsi > 70 ? 100 : technicalSignal.rsi > 55 ? 60 : 10) : 10,
+                      },
+                      {
+                        subject: 'Trend',
+                        bull: technicalSignal?.trend === 'up' ? 90 : 10,
+                        bear: technicalSignal?.trend === 'down' ? 90 : 10,
+                      },
+                      {
+                        subject: 'MACD',
+                        bull: technicalSignal?.macdSignal === 'bullish' ? 85 : 10,
+                        bear: technicalSignal?.macdSignal === 'bearish' ? 85 : 10,
+                      }
+                    ]}>
+                      <PolarGrid stroke="#1F1F1F" />
+                      <PolarAngleAxis dataKey="subject" tick={{ fill: '#666', fontSize: 8, fontFamily: 'monospace' }} />
+                      <Radar name="Bullish" dataKey="bull" stroke="#00E5FF" fill="#00E5FF" fillOpacity={0.3} />
+                      <Radar name="Bearish" dataKey="bear" stroke="#FF3366" fill="#FF3366" fillOpacity={0.3} />
+                    </RadarChart>
+                  </ResponsiveContainer>
                 </div>
-                {technicalSignal && (
-                  <div className="flex justify-between text-[8px] font-mono mt-1 opacity-70">
-                    <span className={cn(technicalSignal.rsi < 40 ? "text-brand-cyan" : technicalSignal.rsi > 60 ? "text-brand-red" : "text-gray-400")}>RSI: {technicalSignal.rsi}</span>
-                    <span className={cn(technicalSignal.macdSignal === 'bullish' ? "text-brand-cyan" : "text-brand-red")}>MACD: {technicalSignal.macdSignal.toUpperCase()}</span>
-                    <span className={cn(technicalSignal.trend === 'up' ? "text-brand-cyan" : "text-brand-red")}>TREND: {technicalSignal.trend.toUpperCase()}</span>
-                  </div>
-                )}
               </div>
             </div>
           </div>
