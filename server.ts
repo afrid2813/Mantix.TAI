@@ -5,6 +5,11 @@ import NodeCache from 'node-cache';
 import axios from 'axios';
 import Anthropic from '@anthropic-ai/sdk';
 import path from 'path';
+import crypto from 'crypto';
+import tradeRoute from './routes/trade.js';
+
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
 
 // Using Native Node 22.14 TS support -> NO ENUMS here
 const cache = new NodeCache({ stdTTL: 5 }); // 5 seconds cache
@@ -260,6 +265,8 @@ Analysis: 2 sentences.`;
       timestamp: Date.now()
     });
   });
+
+  app.use('/api/trade', tradeRoute);
 
   // --- VITE MIDDLEWARE ---
   if (process.env.NODE_ENV !== 'production') {
