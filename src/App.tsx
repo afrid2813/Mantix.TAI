@@ -444,10 +444,10 @@ export default function App() {
                      className={cn(
                        "w-full bg-black/50 border rounded p-2 pr-8 text-white font-mono text-xs focus:outline-none transition-colors",
                        apiKeyInput.length === 0 ? "border-border-dim focus:border-brand-cyan" :
-                       apiKeyInput.length >= 64 && /^[a-zA-Z0-9]+$/.test(apiKeyInput) ? "border-brand-emerald focus:border-brand-emerald" :
+                       apiKeyInput.length >= 20 ? "border-brand-emerald focus:border-brand-emerald" :
                        "border-brand-red focus:border-brand-red"
                      )}
-                     placeholder="API Key (64 characters)"
+                     placeholder="API Key"
                      value={apiKeyInput}
                      onChange={(e) => {
                        setApiKeyInput(e.target.value.trim());
@@ -456,7 +456,7 @@ export default function App() {
                    />
                    {apiKeyInput.length > 0 && (
                      <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                       {apiKeyInput.length >= 64 && /^[a-zA-Z0-9]+$/.test(apiKeyInput) ? (
+                       {apiKeyInput.length >= 20 ? (
                          <Check size={14} className="text-brand-emerald" />
                        ) : (
                          <AlertCircle size={14} className="text-brand-red" />
@@ -471,10 +471,10 @@ export default function App() {
                      className={cn(
                        "w-full bg-black/50 border rounded p-2 pr-8 text-white font-mono text-xs focus:outline-none transition-colors",
                        apiSecretInput.length === 0 ? "border-border-dim focus:border-brand-cyan" :
-                       apiSecretInput.length >= 64 && /^[a-zA-Z0-9]+$/.test(apiSecretInput) ? "border-brand-emerald focus:border-brand-emerald" :
+                       apiSecretInput.length >= 20 ? "border-brand-emerald focus:border-brand-emerald" :
                        "border-brand-red focus:border-brand-red"
                      )}
-                     placeholder="API Secret (64 characters)"
+                     placeholder="API Secret"
                      value={apiSecretInput}
                      onChange={(e) => {
                        setApiSecretInput(e.target.value.trim());
@@ -483,7 +483,7 @@ export default function App() {
                    />
                    {apiSecretInput.length > 0 && (
                      <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                       {apiSecretInput.length >= 64 && /^[a-zA-Z0-9]+$/.test(apiSecretInput) ? (
+                       {apiSecretInput.length >= 20 ? (
                          <Check size={14} className="text-brand-emerald" />
                        ) : (
                          <AlertCircle size={14} className="text-brand-red" />
@@ -506,11 +506,11 @@ export default function App() {
                          return;
                        }
                        
-                       const isValidKey = apiKeyInput.length >= 64 && /^[a-zA-Z0-9]+$/.test(apiKeyInput);
-                       const isValidSecret = apiSecretInput.length >= 64 && /^[a-zA-Z0-9]+$/.test(apiSecretInput);
+                       const isValidKey = apiKeyInput.trim().length >= 20;
+                       const isValidSecret = apiSecretInput.trim().length >= 20;
                        
                        if (!isValidKey || !isValidSecret) {
-                         setWalletError("API keys must be at least 64-character alphanumeric strings.");
+                         setWalletError("API keys appear too short. Please double-check you copied them correctly.");
                          return;
                        }
 
