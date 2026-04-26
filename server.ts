@@ -7,7 +7,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import path from 'path';
 
 // Using Native Node 22.14 TS support -> NO ENUMS here
-const cache = new NodeCache({ stdTTL: 60 }); // 60 seconds cache
+const cache = new NodeCache({ stdTTL: 5 }); // 5 seconds cache
 
 async function startServer() {
   const app = express();
@@ -186,7 +186,7 @@ async function startServer() {
 
       const { prompt, schema } = req.body;
       const response = await ai.models.generateContent({
-        model: "gemini-flash-latest",
+        model: "gemini-2.5-flash",
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         config: {
           responseMimeType: "application/json",

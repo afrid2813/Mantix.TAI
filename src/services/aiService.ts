@@ -105,6 +105,8 @@ Output JSON:`;
   } catch (error: any) {
     if (error.message === 'MISSING_API_KEY') {
        console.log('Gemini API key missing, using computational fallback.');
+    } else if (error.message.includes('Load failed') || error.message.includes('Failed to fetch')) {
+       console.log('Gemini API unreachable, using computational fallback.');
     } else {
        console.error('Gemini Prediction Failed, falling back to computational model:', error.message);
     }
@@ -155,6 +157,9 @@ Output JSON: score (-1 to 1), summary (string), label (string), impactDrivers (s
   } catch (error: any) {
     if (error.message === 'MISSING_API_KEY') {
        return { score: 0, summary: "Sentiment analysis unavailable (API key missing). Reverting to basic indicators.", label: "Neutral", impactDrivers: [] };
+    }
+    if (error.message?.includes('Load failed') || error.message?.includes('Failed to fetch')) {
+        return { score: 0, summary: "Sentiment analysis hitting network errors", label: "Neutral", impactDrivers: ["Network Error"] };
     }
     if (error.message?.includes('429') || error.message?.includes('RESOURCE_EXHAUSTED')) {
       return { score: 0, summary: "Sentiment analysis hitting rate limits (Quota Exceeded)", label: "Neutral", impactDrivers: ["Quota Limit Reached"] };

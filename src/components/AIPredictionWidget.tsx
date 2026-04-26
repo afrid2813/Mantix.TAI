@@ -156,10 +156,30 @@ export function AIPredictionWidget({
               </span>
               {confidence !== null && (
                 <div className="flex items-center gap-2">
-                   <div className="w-16 h-1 bg-gray-800 rounded-full overflow-hidden">
-                      <div className="h-full bg-brand-emerald" style={{ width: `${confidence}%` }} />
+                   <div className="flex flex-col items-end">
+                     <span className="text-[9px] text-gray-400 font-bold leading-none uppercase tracking-widest">Confidence</span>
+                     <span className="text-[8px] text-gray-600 uppercase font-mono">{provider || 'Local'}</span>
                    </div>
-                   <span className="text-[9px] text-gray-500 font-bold">{confidence}% CF</span>
+                   <div className="relative w-10 h-10 flex items-center justify-center ml-1">
+                      <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                        <circle cx="18" cy="18" r="16" fill="none" className="stroke-gray-800/80" strokeWidth="4" />
+                        <circle 
+                            cx="18" cy="18" r="16" fill="none" 
+                            className={confidence >= 80 ? 'stroke-brand-emerald' : confidence >= 50 ? 'stroke-brand-cyan' : 'stroke-brand-red'} 
+                            strokeWidth="4" 
+                            strokeDasharray="100" 
+                            strokeDashoffset={100 - confidence} 
+                            strokeLinecap="round" 
+                            style={{ transition: "stroke-dashoffset 1s ease-in-out" }}
+                        />
+                      </svg>
+                      <span className={
+                          `absolute inset-0 flex items-center justify-center text-[10px] font-bold font-mono tracking-tighter shadow-sm
+                          ${confidence >= 80 ? 'text-brand-emerald' : confidence >= 50 ? 'text-brand-cyan' : 'text-brand-red'}`
+                      }>
+                          {confidence}
+                      </span>
+                   </div>
                 </div>
               )}
             </div>

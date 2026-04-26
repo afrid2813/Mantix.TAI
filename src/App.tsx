@@ -30,6 +30,7 @@ import {
   History,
   ArrowRight,
   Loader2,
+  Key,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "./lib/utils";
@@ -54,6 +55,12 @@ const TICKER_SYMBOLS = [
 
 export default function App() {
   const [marketData, setMarketData] = useState<CandleData[]>([]);
+  const marketDataRef = useRef<CandleData[]>([]);
+  
+  useEffect(() => {
+    marketDataRef.current = marketData;
+  }, [marketData]);
+
   const [loading, setLoading] = useState(true);
   const [symbol, setSymbol] = useState("BTCUSDT");
   const [interval, setIntervalState] = useState("1m");
@@ -78,6 +85,8 @@ export default function App() {
   const [balance, setBalance] = useState(25000);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [showTransactions, setShowTransactions] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importInput, setImportInput] = useState("");
 
   // Real-time states
   const [tickers, setTickers] = useState<
@@ -106,7 +115,7 @@ export default function App() {
         setMarketData([...pendingMarketData.current]);
         pendingMarketData.current = [];
       }
-    }, 500); // Throttled to 500ms for performance
+    }, 100); // Throttled to 100ms for high performance live feel
     return () => clearInterval(timer);
   }, []);
 
@@ -234,7 +243,7 @@ export default function App() {
 
           if (pendingMarketData.current.length === 0) {
             // First tick in this window, seed with current state if empty
-            pendingMarketData.current = [...marketData];
+            pendingMarketData.current = [...marketDataRef.current];
           }
 
           if (pendingMarketData.current.length === 0) {
@@ -266,7 +275,8 @@ export default function App() {
 
     const timer = setInterval(() => {
       setMetrics((prev) => {
-        const lastCandle = marketData[marketData.length - 1];
+        const currentData = marketDataRef.current;
+        const lastCandle = currentData[currentData.length - 1];
         const lastPrice = prev.price || (lastCandle ? lastCandle.close : 100);
         const changeRate = (Math.random() - 0.5) * 0.001;
         const newPrice = lastPrice * (1 + changeRate);
@@ -283,7 +293,7 @@ export default function App() {
           volume: Math.random() * 5000,
         };
 
-        pendingMarketData.current = [...marketData, candle].slice(-500);
+        pendingMarketData.current = [...currentData, candle].slice(-500);
         return {
           price: newPrice,
           change: prev.change + (Math.random() - 0.5) * 0.05,
@@ -420,7 +430,72 @@ export default function App() {
               </div>
             )}
             
-            {isConnectingWallet ? (
+            {isImporting ? (
+              <div className="flex flex-col gap-3">
+                 <p className="text-xs text-gray-300 font-mono">Enter your Seed Phrase or Private Key to import your wallet.</p>
+                 <textarea 
+                   className="w-full h-24 bg-black/50 border border-border-dim rounded p-2 text-white font-mono text-xs focus:border-brand-cyan focus:outline-none resize-none"
+                   placeholder="e.g. word1 word2 word3..."
+                   value={importInput}
+                   onChange={(e) => setImportInput(e.target.value)}
+                 />
+                 <div className="flex gap-2 mt-2">
+                   <button 
+                     onClick={() => { setIsImporting(false); setImportInput(""); setWalletError(null); }}
+                     className="flex-1 py-2 bg-bg-primary border border-border-dim hover:bg-bg-primary/80 rounded transition-all font-bold text-xs"
+                   >
+                     Cancel
+                   </button>
+                   <button 
+                     onClick={async () => {
+                       if (!importInput.trim()) {
+                         setWalletError("Please enter a valid seed phrase or private key.");
+                         return;
+                       }
+                       setWalletStatusMessage("Importing wallet...");
+                       setIsImporting(false);
+                       setIsConnectingWallet(true);
+                       try {
+                         let wallet;
+                         const input = importInput.trim();
+                         // Check if it's a seed phrase (usually 12 or 24 words)
+                         if (input.split(" ").length >= 12) {
+                           wallet = ethers.Wallet.fromPhrase(input);
+                         } else {
+                           // Assume private key
+                           // Private keys usually start with 0x, add if missing
+                           const formattedKey = input.startsWith("0x") ? input : `0x${input}`;
+                           wallet = new ethers.Wallet(formattedKey);
+                         }
+
+                         setWalletStatusMessage("Fetching balance from network...");
+                         // Using public RPC to fetch ETH balance (could be any EVM chain)
+                         const provider = new ethers.JsonRpcProvider("https://eth.llamarpc.com");
+                         const balanceWei = await provider.getBalance(wallet.address);
+                         const balanceEth = Number(ethers.formatEther(balanceWei));
+
+                         setWalletAddress(wallet.address.substring(0, 6) + "..." + wallet.address.substring(wallet.address.length - 4));
+                         setBalance(balanceEth);
+                         setWalletConnected(true);
+                         setIsConnectingWallet(false);
+                         setShowWalletModal(false);
+                         setImportInput("");
+                       } catch (err: any) {
+                         setWalletError("Invalid Private Key or Seed Phrase.");
+                         setIsConnectingWallet(false);
+                       }
+                     }}
+                     className="flex-[2] py-2 bg-brand-cyan text-black hover:bg-brand-cyan/80 rounded transition-all font-bold text-xs"
+                   >
+                     Import Wallet
+                   </button>
+                 </div>
+                 <div className="mt-2 text-[10px] text-gray-500 flex items-start gap-1">
+                   <Info size={12} className="shrink-0 mt-0.5" />
+                   <p>For your security during this simulation, any mock key can be used. Do not enter real seed phrases.</p>
+                 </div>
+              </div>
+            ) : isConnectingWallet ? (
               <div className="flex flex-col items-center justify-center py-8">
                 <Loader2 className="animate-spin text-brand-cyan mb-4" size={32} />
                 <div className="text-sm font-bold animate-pulse text-white mb-2">Connecting Wallet</div>
@@ -431,31 +506,90 @@ export default function App() {
             ) : (
               <div className="flex flex-col gap-3">
                 <button 
-                  onClick={connectRealWallet}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-bg-primary border border-border-dim/50 hover:border-brand-cyan/50 hover:bg-brand-cyan/5 rounded transition-all group group-hover:shadow-[0_0_15px_rgba(0,229,255,0.1)]"
+                  onClick={() => {
+                     // Attempt to open Binance App via deep link
+                     if (isMobile) {
+                        window.location.href = "bnc://app.binance.com/";
+                        setTimeout(() => {
+                          setWalletError("If the Binance app didn't open, please ensure it is installed.");
+                        }, 2000);
+                     } else {
+                        // Check if browser extension exists
+                        if (typeof (window as any).BinanceChain !== "undefined") {
+                           setWalletStatusMessage("Requesting connection to Binance Wallet...");
+                           setIsConnectingWallet(true);
+                           (window as any).BinanceChain.request({ method: 'eth_requestAccounts' })
+                              .then((accounts: string[]) => {
+                                 setWalletAddress(accounts[0].substring(0, 6) + "..." + accounts[0].substring(accounts[0].length - 4));
+                                 setBalance(Math.floor(Math.random() * 50000) + 10000);
+                                 setWalletConnected(true);
+                                 setIsConnectingWallet(false);
+                                 setShowWalletModal(false);
+                              })
+                              .catch((err: any) => {
+                                setWalletError(err.message || "Failed to connect to Binance Wallet");
+                                setIsConnectingWallet(false);
+                              });
+                        } else {
+                           setWalletError("Binance Wallet has not been detected. Please install the App or extension.");
+                           window.open("https://www.binance.com/en/web3wallet", "_blank");
+                        }
+                     }
+                  }}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-bg-primary border border-border-dim/50 hover:border-[#FCD535]/50 hover:bg-[#FCD535]/5 rounded transition-all group group-hover:shadow-[0_0_15px_rgba(252,213,53,0.1)]"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-[#f6851b]/10 flex items-center justify-center">
-                      <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="MetaMask" className="w-5 h-5"/>
+                    <div className="w-8 h-8 rounded-full bg-[#FCD535]/10 flex items-center justify-center">
+                      <div className="w-5 h-5 rounded bg-[#FCD535] flex items-center justify-center text-black font-bold text-[10px]">BNB</div>
                     </div>
                     <div className="text-left">
-                      <div className="font-bold text-sm group-hover:text-brand-cyan transition-colors">MetaMask / Web3 Provider</div>
-                      <div className="text-[10px] text-gray-500 font-mono">Connect your browser wallet</div>
+                      <div className="font-bold text-sm group-hover:text-[#FCD535] transition-colors">Binance Web3 Wallet</div>
+                      <div className="text-[10px] text-gray-500 font-mono">Binance App / Extension</div>
                     </div>
                   </div>
-                  <ChevronRight size={16} className="text-gray-600 group-hover:text-brand-cyan" />
+                  <ChevronRight size={16} className="text-gray-600 group-hover:text-[#FCD535]" />
                 </button>
                 
-                {isMobile && !((window as any).ethereum) && (
-                  <a 
-                    href={`https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full flex items-center justify-center px-4 py-2 bg-brand-cyan text-black font-bold text-xs rounded transition-all hover:bg-brand-cyan/80"
-                  >
-                    Open in MetaMask App
-                  </a>
-                )}
+                <button 
+                  onClick={() => {
+                     // Phantom wallet integration
+                     const isPhantomInstalled = (window as any).phantom?.solana?.isPhantom || (window as any).solana?.isPhantom;
+                     if (isPhantomInstalled) {
+                        const provider = (window as any).phantom?.solana || (window as any).solana;
+                        setWalletStatusMessage("Connecting to Phantom...");
+                        setIsConnectingWallet(true);
+                        provider.connect()
+                           .then((resp: any) => {
+                              setWalletAddress(resp.publicKey.toString().substring(0, 6) + "..." + resp.publicKey.toString().substring(resp.publicKey.toString().length - 4));
+                              setBalance(Math.random() * 100); // Mock SOL balance 
+                              setWalletConnected(true);
+                              setIsConnectingWallet(false);
+                              setShowWalletModal(false);
+                           })
+                           .catch((err: any) => {
+                              setWalletError(err.message || "Failed to connect to Phantom");
+                              setIsConnectingWallet(false);
+                           });
+                     } else {
+                        setWalletError("Phantom Wallet not detected. Please install the browser extension.");
+                        window.open("https://phantom.app/", "_blank");
+                     }
+                  }}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-bg-primary border border-border-dim/50 hover:border-[#AB9FF2]/50 hover:bg-[#AB9FF2]/5 rounded transition-all group group-hover:shadow-[0_0_15px_rgba(171,159,242,0.1)]"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-[#AB9FF2]/10 flex items-center justify-center">
+                      <div className="w-5 h-5 rounded-full bg-[#AB9FF2] flex items-center justify-center text-white border border-white/20">
+                          <svg width="12" height="12" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M54.5455 11.239C63.8182 12.0163 118.727 16.294 121.818 51.6841C122.909 63.3551 113.818 73.0805 106.909 77.3582C96.3636 84.7495 62.1818 64.9094 58.9091 59.8521L58.5455 60.241C55.2727 64.5204 22.9091 80.8601 22.9091 80.8601L25.8182 60.241C25.8182 60.241 -2.90909 46.2343 0.363636 29.8967C2.90909 8.11326 43.6364 10.4616 54.5455 11.239Z" fill="white"/><path d="M78.1818 41.1793C83.2727 41.1793 87.2727 45.0684 87.2727 50.1264C87.2727 55.1843 83.2727 59.0734 78.1818 59.0734C73.0909 59.0734 69.0909 55.1843 69.0909 50.1264C69.0909 45.0684 73.0909 41.1793 78.1818 41.1793Z" fill="#AB9FF2"/><path d="M43.6364 41.1793C48.7273 41.1793 52.7273 45.0684 52.7273 50.1264C52.7273 55.1843 48.7273 59.0734 43.6364 59.0734C38.5455 59.0734 34.5455 55.1843 34.5455 50.1264C34.5455 45.0684 38.5455 41.1793 43.6364 41.1793Z" fill="#AB9FF2"/></svg>
+                      </div>
+                    </div>
+                    <div className="text-left">
+                      <div className="font-bold text-sm group-hover:text-[#AB9FF2] transition-colors">Phantom</div>
+                      <div className="text-[10px] text-gray-500 font-mono">Solana / Ethereum Extension</div>
+                    </div>
+                  </div>
+                  <ChevronRight size={16} className="text-gray-600 group-hover:text-[#AB9FF2]" />
+                </button>
 
                 <div className="relative flex py-2 items-center">
                   <div className="flex-grow border-t border-border-dim/50"></div>
@@ -464,19 +598,19 @@ export default function App() {
                 </div>
 
                 <button 
-                  onClick={connectSimulatedWallet}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-bg-primary border border-border-dim/50 hover:border-brand-purple/50 hover:bg-brand-purple/5 rounded transition-all group group-hover:shadow-[0_0_15px_rgba(157,78,221,0.1)]"
+                  onClick={() => setIsImporting(true)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-bg-primary border border-border-dim/50 hover:border-gray-400/50 hover:bg-gray-400/5 rounded transition-all group group-hover:shadow-[0_0_15px_rgba(156,163,175,0.1)]"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-brand-purple/10 flex items-center justify-center">
-                      <Wallet size={16} className="text-brand-purple" />
+                    <div className="w-8 h-8 rounded-full bg-gray-500/10 flex items-center justify-center">
+                      <Key size={16} className="text-gray-400 group-hover:text-white transition-colors" />
                     </div>
                     <div className="text-left">
-                      <div className="font-bold text-sm group-hover:text-brand-purple transition-colors">Simulated Wallet</div>
-                      <div className="text-[10px] text-gray-500 font-mono">Try the platform in Demo Mode</div>
+                      <div className="font-bold text-sm group-hover:text-white transition-colors">Import Wallet</div>
+                      <div className="text-[10px] text-gray-500 font-mono">Use Private Key or Seed Phrase</div>
                     </div>
                   </div>
-                  <ChevronRight size={16} className="text-gray-600 group-hover:text-brand-purple" />
+                  <ChevronRight size={16} className="text-gray-600 group-hover:text-white" />
                 </button>
               </div>
             )}

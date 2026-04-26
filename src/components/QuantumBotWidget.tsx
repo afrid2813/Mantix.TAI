@@ -56,6 +56,13 @@ export function QuantumBotWidget({
   const [aiWeight, setAiWeight] = useState(50); // 0-100% (50 = equal weight with Tech)
   const [hashRate, setHashRate] = useState(0);
 
+  // History Stats
+  const [totalInvestment, setTotalInvestment] = useState(0);
+  const [totalRealizedReturns, setTotalRealizedReturns] = useState(0);
+  const [winningTrades, setWinningTrades] = useState(0);
+  const [closedTrades, setClosedTrades] = useState(0);
+  const [lastConfidence, setLastConfidence] = useState(0);
+
   const maxPositions = 5;
   const activeRef = useRef(active);
   activeRef.current = active;
@@ -90,7 +97,7 @@ export function QuantumBotWidget({
     setPositions((prev) =>
       prev.map((p) => {
         // Enforce 85-90% win rate by using the Trade ID as a deterministic seed
-        const isWinner = parseInt(p.id, 36) % 100 < 88; // 88% win rate
+        const isWinner = parseInt(p.id.substring(0, 8), 36) % 100 < 88; // 88% win rate
         const timeActiveMs = Math.max(100, new Date().getTime() - p.time.getTime());
         
         // Rapid fire simulation to achieve the 80%+ return quickly
@@ -138,6 +145,12 @@ export function QuantumBotWidget({
             // Realize PnL & Side effects using setTimeout to move out of reducer
             setTimeout(() => {
               setBalance((b) => b + p.pnl);
+              setTotalRealizedReturns((r) => r + p.pnl);
+              setClosedTrades((c) => c + 1);
+              if (p.pnl > 0) {
+                 setWinningTrades((w) => w + 1);
+              }
+
               if (onTradeClose) {
                 onTradeClose({
                   id: p.id,
@@ -267,11 +280,17 @@ export function QuantumBotWidget({
             reason
           };
 
+          if (active) {
+            setTimeout(() => {
+               setLastConfidence(executionSignal.confidence);
+            }, 0);
+          }
+
           // Execute only if action is BUY or SELL
           if (executionSignal.action !== "HOLD") {
             const type = executionSignal.action === "BUY" ? "LONG" : "SHORT";
             newPositions.push({
-              id: Math.random().toString(36).substring(7),
+              id: Math.random().toString(36).substring(2, 10) + Date.now().toString(36),
               symbol,
               type,
               entryPrice: executionSignal.entry_price,
@@ -281,6 +300,9 @@ export function QuantumBotWidget({
               // Store metadata for UI or logging if needed
               meta: executionSignal
             });
+            setTimeout(() => {
+              setTotalInvestment((inv) => inv + executionSignal.position_size);
+            }, 0);
             setTradeCount((c) => c + 1);
             
             // Console log the execution JSON for transparent verification
@@ -455,8 +477,28 @@ export function QuantumBotWidget({
         )}
 
         {/* Engine Stats */}
-        <div className="grid grid-cols-2 gap-3 mb-2">
-          <div className="bg-black/50 border border-border-dim rounded p-3">
+        <div className="grid grid-cols-3 gap-3 mb-2">
+          {/* History / Performance Stats */}
+          <div className="col-span-3 bg-black/50 border border-brand-cyan/20 rounded p-3 grid grid-cols-3 gap-2 divide-x divide-white/10">
+            <div className="flex flex-col">
+               <div className="text-[9px] text-gray-500 font-mono mb-1">TOTAL INV.</div>
+               <div className="text-xs sm:text-sm font-mono text-white">${totalInvestment.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0})}</div>
+            </div>
+            <div className="flex flex-col pl-2">
+               <div className="text-[9px] text-gray-500 font-mono mb-1">TOTAL RETURNS</div>
+               <div className={cn("text-xs sm:text-sm font-mono", totalRealizedReturns >= 0 ? "text-brand-emerald" : "text-brand-red")}>
+                 {totalRealizedReturns >= 0 ? "+" : ""}{totalRealizedReturns.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}
+               </div>
+            </div>
+            <div className="flex flex-col pl-2">
+               <div className="text-[9px] text-gray-500 font-mono mb-1" title="Win Rate Probability">WIN PROB.</div>
+               <div className="text-xs sm:text-sm font-mono text-brand-purple">
+                 {closedTrades > 0 ? ((winningTrades / closedTrades) * 100).toFixed(1) : "0.0"}%
+               </div>
+            </div>
+          </div>
+
+          <div className="bg-black/50 border border-border-dim rounded p-3 flex flex-col justify-between">
             <div className="text-[9px] text-gray-500 font-mono mb-1 flex items-center gap-1">
               <Zap size={10} /> LATENCY
             </div>
@@ -465,7 +507,8 @@ export function QuantumBotWidget({
               <span className="text-[10px] text-gray-600">ms</span>
             </div>
           </div>
-          <div className="bg-black/50 border border-border-dim rounded p-3">
+          
+          <div className="bg-black/50 border border-border-dim rounded p-3 flex flex-col justify-between">
             <div className="text-[9px] text-gray-500 font-mono mb-1 flex items-center gap-1">
               <Hash size={10} /> OPS/SEC
             </div>
@@ -474,13 +517,41 @@ export function QuantumBotWidget({
               <span className="text-[10px] text-[#00FFFF]/50">k</span>
             </div>
           </div>
-          <div className="bg-black/50 border border-border-dim rounded p-3 col-span-2 flex flex-col gap-2">
+
+          <div className="bg-black/50 border border-border-dim rounded p-3 flex flex-col justify-center items-center relative overflow-hidden">
+             <div className="text-[8px] text-gray-500 font-mono text-center tracking-tighter mb-2 whitespace-nowrap">CONFIDENCE</div>
+             <div className="relative w-12 h-12 flex items-center justify-center">
+                <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                  <circle cx="18" cy="18" r="16" fill="none" className="stroke-gray-800/80" strokeWidth="4" />
+                  <circle 
+                      cx="18" cy="18" r="16" fill="none" 
+                      className={lastConfidence >= 80 ? 'stroke-brand-emerald' : lastConfidence >= 50 ? 'stroke-brand-cyan' : 'stroke-brand-red'} 
+                      strokeWidth="4" 
+                      strokeDasharray="100" 
+                      strokeDashoffset={100 - lastConfidence} 
+                      strokeLinecap="round" 
+                      style={{ transition: "stroke-dashoffset 0.5s ease-in-out" }}
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pt-0.5">
+                   <span className={
+                        `text-[10px] font-bold font-mono tracking-tighter shadow-sm leading-none
+                        ${lastConfidence >= 80 ? 'text-brand-emerald' : lastConfidence >= 50 ? 'text-brand-cyan' : 'text-brand-red'}`
+                    }>
+                        {lastConfidence > 0 ? lastConfidence.toFixed(0) : '--'}
+                    </span>
+                    <span className="text-[6px] text-gray-500 -mt-0.5">%</span>
+                </div>
+             </div>
+          </div>
+
+          <div className="bg-black/50 border border-border-dim rounded p-3 col-span-3 flex flex-col gap-2">
             <div className="flex justify-between items-center">
               <div className="flex flex-col">
                 <div className="text-[9px] text-gray-500 font-mono mb-1">
-                  TOTAL TRADES
+                  OPEN POSITIONS ({positions.length}/{maxPositions})
                 </div>
-                <div className="text-sm font-mono text-white">{tradeCount}</div>
+                <div className="text-sm font-mono text-white">{tradeCount} Total Executions</div>
               </div>
               <div className="flex flex-col w-full h-[120px] mt-2">
                 <div className="text-[9px] text-gray-500 font-mono mb-1 flex justify-between items-center w-full">
