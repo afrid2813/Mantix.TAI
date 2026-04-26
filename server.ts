@@ -6,7 +6,10 @@ import axios from 'axios';
 import Anthropic from '@anthropic-ai/sdk';
 import path from 'path';
 import crypto from 'crypto';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import tradeRoute from './routes/trade.js';
+import accountRoute from './routes/account.js';
 
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
@@ -14,20 +17,45 @@ const require = createRequire(import.meta.url);
 // Using Native Node 22.14 TS support -> NO ENUMS here
 const cache = new NodeCache({ stdTTL: 5 }); // 5 seconds cache
 
+// Rate Limiting Setup
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5000, // Very high limit: UI polls frequently
+  message: { error: 'Too many requests from this IP, please try again after 15 minutes' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: {
+    xForwardedForHeader: false,
+    trustProxy: false,
+  }
+});
+
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  app.set('trust proxy', 1);
+  const PORT = parseInt(process.env.PORT || '3000');
+
+  // Security Headers
+  app.use(helmet({
+    contentSecurityPolicy: false, // Disabled for development/vite compatibility. In true production, configure strictly.
+    crossOriginEmbedderPolicy: false,
+  }));
 
   app.use(cors());
-  app.use(express.json());
+  app.use(express.json({ limit: '1mb' }));
+  
+  // Apply rate limiter to /api routes
+// app.use('/api/', apiLimiter);
 
   // Init AI clients lazily
   let anthropicClient: Anthropic | null = null;
 
   function getAnthropic() {
-    if (!anthropicClient && process.env.ANTHROPIC_API_KEY) {
+    const apiKey = process.env.ANTHROPIC_API_KEY || '';
+    const hasKey = apiKey.length > 5 && !apiKey.includes('undefined') && apiKey !== 'MY_ANTHROPIC_API_KEY';
+    if (!anthropicClient && hasKey) {
       anthropicClient = new Anthropic({
-        apiKey: process.env.ANTHROPIC_API_KEY,
+        apiKey: apiKey,
       });
     }
     return anthropicClient;
@@ -37,7 +65,7 @@ async function startServer() {
   let googleAI: any = null;
   function getGoogleAI() {
     const apiKey = process.env.GEMINI_API_KEY || '';
-    const hasApiKey = apiKey.length > 5 && !apiKey.includes('undefined') && apiKey !== 'your_gemini_api_key_here';
+    const hasApiKey = apiKey.length > 5 && !apiKey.includes('undefined') && apiKey !== 'your_gemini_api_key_here' && apiKey !== 'MY_GEMINI_API_KEY';
     if (!googleAI && hasApiKey) {
       googleAI = new GoogleGenAI({ apiKey });
     }
@@ -48,7 +76,7 @@ async function startServer() {
 
   // Health check
   app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok' });
+    res.json({ status: 'ok', vite_keys: Object.keys(process.env).filter(k => k.includes('GEMINI')), val: process.env.GEMINI_API_KEY });
   });
 
   // Proxy Binance Market Data Request
@@ -184,29 +212,37 @@ async function startServer() {
   // Gemini API Proxy
   app.post('/api/predict-gemini', async (req, res) => {
     try {
-      const ai = getGoogleAI();
-      if (!ai) {
+      const apiKey = process.env.GEMINI_API_KEY || '';
+      if (!apiKey || apiKey === 'your_gemini_api_key_here' || apiKey === 'MY_GEMINI_API_KEY') {
         return res.status(404).json({ error: 'Gemini AI unavailable (Missing API Key on Server)' });
       }
 
       const { prompt, schema } = req.body;
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+      
+      // Use direct REST API to bypass any SDK parsing/version issues
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+      const payload = {
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        config: {
-          responseMimeType: "application/json",
+        generationConfig: {
+          responseMimeType: 'application/json',
           responseSchema: schema
         }
+      };
+
+      const response = await axios.post(url, payload, {
+        headers: { 'Content-Type': 'application/json' }
       });
-      
-      const parsed = JSON.parse(response.text || '{}');
+
+      const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+      const parsed = JSON.parse(text);
       res.json(parsed);
     } catch (err: any) {
-      if (err.message?.includes('API key not valid') || err.message?.includes('API_KEY_INVALID')) {
+      const errMsg = err.response?.data?.error?.message || err.message;
+      if (errMsg?.includes('API key not valid') || errMsg?.includes('API_KEY_INVALID')) {
         return res.status(404).json({ error: 'Gemini AI unavailable (Invalid API Key on Server)' });
       }
-      console.error('Gemini proxy error:', err.message);
-      res.status(500).json({ error: 'Gemini Analysis failed: ' + err.message });
+      console.error('Gemini proxy error:', errMsg);
+      res.status(500).json({ error: 'Gemini Analysis failed: ' + errMsg });
     }
   });
 
@@ -267,6 +303,7 @@ Analysis: 2 sentences.`;
   });
 
   app.use('/api/trade', tradeRoute);
+  app.use('/api/account', accountRoute);
 
   // --- VITE MIDDLEWARE ---
   if (process.env.NODE_ENV !== 'production') {

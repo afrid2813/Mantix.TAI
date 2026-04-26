@@ -1,5 +1,3 @@
-import { Type } from "@google/genai";
-
 export interface AIResult {
   prediction: string;
   confidence: number;
@@ -71,17 +69,17 @@ Output JSON:`;
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        prompt,
+        prompt: prompt.replace(/[\uD800-\uDFFF]/g, ''),
         schema: {
-          type: Type.OBJECT,
+          type: "OBJECT",
           properties: {
-            action: { type: Type.STRING, description: "BUY | SELL | HOLD" },
-            confidence: { type: Type.NUMBER, description: "0-100" },
-            entry_price: { type: Type.NUMBER },
-            stop_loss: { type: Type.NUMBER },
-            take_profit: { type: Type.NUMBER },
-            position_size: { type: Type.NUMBER },
-            reason: { type: Type.STRING, description: "short explanation" }
+            action: { type: "STRING", description: "BUY | SELL | HOLD" },
+            confidence: { type: "NUMBER", description: "0-100" },
+            entry_price: { type: "NUMBER" },
+            stop_loss: { type: "NUMBER" },
+            take_profit: { type: "NUMBER" },
+            position_size: { type: "NUMBER" },
+            reason: { type: "STRING", description: "short explanation" }
           },
           required: ["action", "confidence", "entry_price", "stop_loss", "take_profit", "position_size", "reason"]
         }
@@ -92,6 +90,15 @@ Output JSON:`;
         const text = await response.text();
         if ((response.status === 404 && text.includes('Gemini AI unavailable')) || text.includes('API key not valid') || text.includes('API_KEY_INVALID')) {
              throw new Error('MISSING_API_KEY');
+        }
+        let errorObj;
+        try {
+           errorObj = JSON.parse(text);
+        } catch(e) {
+           errorObj = null;
+        }
+        if (errorObj && errorObj.error) {
+           throw new Error(errorObj.error);
         }
         throw new Error(text);
     }
@@ -115,7 +122,7 @@ Output JSON:`;
 }
 
 export async function getNewsSentiment(news: { title: string }[]) {
-  const newsTitles = news.map(n => `- ${n.title}`).join('\n');
+  const newsTitles = news.map(n => `- ${n.title}`).join('\n').replace(/[\uD800-\uDFFF]/g, '');
   const prompt = `Perform multi-source NLP sentiment synthesis on these headlines:
 ${newsTitles}
 
@@ -124,23 +131,23 @@ Analyze for:
 2. Social/Retail Hype vs Institutional Signal
 3. Dominant Emotion (Fear, Greed, Uncertainty, Optimism)
 
-Output JSON: score (-1 to 1), summary (string), label (string), impactDrivers (string array).`;
+Output JSON: score (-1 to 1), summary (string), label (string), impact_drivers (string array).`;
 
   try {
     const response = await fetch('/api/predict-gemini', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        prompt,
+        prompt: prompt.replace(/[\uD800-\uDFFF]/g, ''),
         schema: {
-          type: Type.OBJECT,
+          type: "OBJECT",
           properties: {
-            score: { type: Type.NUMBER },
-            summary: { type: Type.STRING },
-            label: { type: Type.STRING },
-            impactDrivers: { type: Type.ARRAY, items: { type: Type.STRING } }
+            score: { type: "NUMBER" },
+            summary: { type: "STRING" },
+            label: { type: "STRING" },
+            impact_drivers: { type: "ARRAY", items: { type: "STRING" } }
           },
-          required: ["score", "summary", "label", "impactDrivers"]
+          required: ["score", "summary", "label", "impact_drivers"]
         }
       })
     });
@@ -150,10 +157,25 @@ Output JSON: score (-1 to 1), summary (string), label (string), impactDrivers (s
         if ((response.status === 404 && text.includes('Gemini AI unavailable')) || text.includes('API key not valid') || text.includes('API_KEY_INVALID')) {
              throw new Error('MISSING_API_KEY');
         }
+        let errorObj;
+        try {
+           errorObj = JSON.parse(text);
+        } catch(e) {
+           errorObj = null;
+        }
+        if (errorObj && errorObj.error) {
+           throw new Error(errorObj.error);
+        }
         throw new Error(text);
     }
     
-    return await response.json();
+    const parsed = await response.json();
+    return {
+      score: parsed.score,
+      summary: parsed.summary,
+      label: parsed.label,
+      impactDrivers: parsed.impact_drivers || []
+    };
   } catch (error: any) {
     if (error.message === 'MISSING_API_KEY') {
        return { score: 0, summary: "Sentiment analysis unavailable (API key missing). Reverting to basic indicators.", label: "Neutral", impactDrivers: [] };

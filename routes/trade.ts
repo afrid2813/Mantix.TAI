@@ -13,6 +13,10 @@ router.post('/', async (req, res) => {
     balance,
   } = req.body;
 
+  if (!apiKey || !secretKey) {
+    return res.status(400).json({ success: false, error: 'API Key and Secret Key are required' });
+  }
+
   const result = await executeTrade({
     apiKey,
     secretKey,

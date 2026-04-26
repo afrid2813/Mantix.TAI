@@ -6,6 +6,7 @@ export function createClient(apiKey: string, secretKey: string) {
   return new Binance().options({
     APIKEY: apiKey,
     APISECRET: secretKey,
+    useServerTime: true
   });
 }
 
@@ -22,4 +23,14 @@ export async function placeOrder({ apiKey, secretKey, symbol, side, quantity }: 
   } catch (err: any) {
     throw err;
   }
+}
+
+export async function getAccountInfo({ apiKey, secretKey }: any) {
+  const client = createClient(apiKey, secretKey);
+  return new Promise((resolve, reject) => {
+    client.balance((error: any, balances: any) => {
+      if (error) reject(error);
+      else resolve(balances);
+    });
+  });
 }

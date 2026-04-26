@@ -31,6 +31,8 @@ import {
   ArrowRight,
   Loader2,
   Key,
+  Check,
+  AlertCircle,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "./lib/utils";
@@ -86,7 +88,9 @@ export default function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [showTransactions, setShowTransactions] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-  const [importInput, setImportInput] = useState("");
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [apiSecretInput, setApiSecretInput] = useState("");
+  const [apiCredentials, setApiCredentials] = useState<{apiKey: string, apiSecret: string} | null>(null);
 
   // Real-time states
   const [tickers, setTickers] = useState<
@@ -432,67 +436,135 @@ export default function App() {
             
             {isImporting ? (
               <div className="flex flex-col gap-3">
-                 <p className="text-xs text-gray-300 font-mono">Enter your Seed Phrase or Private Key to import your wallet.</p>
-                 <textarea 
-                   className="w-full h-24 bg-black/50 border border-border-dim rounded p-2 text-white font-mono text-xs focus:border-brand-cyan focus:outline-none resize-none"
-                   placeholder="e.g. word1 word2 word3..."
-                   value={importInput}
-                   onChange={(e) => setImportInput(e.target.value)}
-                 />
+                 <p className="text-xs text-gray-300 font-mono">Enter your Binance API Key and Secret to connect your account.</p>
+                 
+                 <div className="relative">
+                   <input 
+                     type="text"
+                     className={cn(
+                       "w-full bg-black/50 border rounded p-2 pr-8 text-white font-mono text-xs focus:outline-none transition-colors",
+                       apiKeyInput.length === 0 ? "border-border-dim focus:border-brand-cyan" :
+                       apiKeyInput.length >= 64 && /^[a-zA-Z0-9]+$/.test(apiKeyInput) ? "border-brand-emerald focus:border-brand-emerald" :
+                       "border-brand-red focus:border-brand-red"
+                     )}
+                     placeholder="API Key (64 characters)"
+                     value={apiKeyInput}
+                     onChange={(e) => {
+                       setApiKeyInput(e.target.value.trim());
+                       setWalletError(null);
+                     }}
+                   />
+                   {apiKeyInput.length > 0 && (
+                     <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                       {apiKeyInput.length >= 64 && /^[a-zA-Z0-9]+$/.test(apiKeyInput) ? (
+                         <Check size={14} className="text-brand-emerald" />
+                       ) : (
+                         <AlertCircle size={14} className="text-brand-red" />
+                       )}
+                     </div>
+                   )}
+                 </div>
+
+                 <div className="relative">
+                   <input 
+                     type="password"
+                     className={cn(
+                       "w-full bg-black/50 border rounded p-2 pr-8 text-white font-mono text-xs focus:outline-none transition-colors",
+                       apiSecretInput.length === 0 ? "border-border-dim focus:border-brand-cyan" :
+                       apiSecretInput.length >= 64 && /^[a-zA-Z0-9]+$/.test(apiSecretInput) ? "border-brand-emerald focus:border-brand-emerald" :
+                       "border-brand-red focus:border-brand-red"
+                     )}
+                     placeholder="API Secret (64 characters)"
+                     value={apiSecretInput}
+                     onChange={(e) => {
+                       setApiSecretInput(e.target.value.trim());
+                       setWalletError(null);
+                     }}
+                   />
+                   {apiSecretInput.length > 0 && (
+                     <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                       {apiSecretInput.length >= 64 && /^[a-zA-Z0-9]+$/.test(apiSecretInput) ? (
+                         <Check size={14} className="text-brand-emerald" />
+                       ) : (
+                         <AlertCircle size={14} className="text-brand-red" />
+                       )}
+                     </div>
+                   )}
+                 </div>
+
                  <div className="flex gap-2 mt-2">
                    <button 
-                     onClick={() => { setIsImporting(false); setImportInput(""); setWalletError(null); }}
+                     onClick={() => { setIsImporting(false); setApiKeyInput(""); setApiSecretInput(""); setWalletError(null); }}
                      className="flex-1 py-2 bg-bg-primary border border-border-dim hover:bg-bg-primary/80 rounded transition-all font-bold text-xs"
                    >
                      Cancel
                    </button>
                    <button 
                      onClick={async () => {
-                       if (!importInput.trim()) {
-                         setWalletError("Please enter a valid seed phrase or private key.");
+                       if (!apiKeyInput.trim() || !apiSecretInput.trim()) {
+                         setWalletError("Please enter both API Key and Secret Key.");
                          return;
                        }
-                       setWalletStatusMessage("Importing wallet...");
+                       
+                       const isValidKey = apiKeyInput.length >= 64 && /^[a-zA-Z0-9]+$/.test(apiKeyInput);
+                       const isValidSecret = apiSecretInput.length >= 64 && /^[a-zA-Z0-9]+$/.test(apiSecretInput);
+                       
+                       if (!isValidKey || !isValidSecret) {
+                         setWalletError("API keys must be at least 64-character alphanumeric strings.");
+                         return;
+                       }
+
+                       setWalletStatusMessage("Verifying API Keys...");
                        setIsImporting(false);
                        setIsConnectingWallet(true);
                        try {
-                         let wallet;
-                         const input = importInput.trim();
-                         // Check if it's a seed phrase (usually 12 or 24 words)
-                         if (input.split(" ").length >= 12) {
-                           wallet = ethers.Wallet.fromPhrase(input);
+                         const res = await fetch('/api/account', {
+                           method: 'POST',
+                           headers: {
+                             'Content-Type': 'application/json'
+                           },
+                           body: JSON.stringify({
+                             apiKey: apiKeyInput.trim(),
+                             secretKey: apiSecretInput.trim()
+                           })
+                         });
+                         const data = await res.json();
+                         if (data.success) {
+                           setWalletAddress("BINANCE_SPOT");
+                           setBalance(data.balance);
+                           setApiCredentials({ apiKey: apiKeyInput.trim(), apiSecret: apiSecretInput.trim() });
+                           setWalletConnected(true);
+                           setIsConnectingWallet(false);
+                           setShowWalletModal(false);
+                           setApiKeyInput("");
+                           setApiSecretInput("");
                          } else {
-                           // Assume private key
-                           // Private keys usually start with 0x, add if missing
-                           const formattedKey = input.startsWith("0x") ? input : `0x${input}`;
-                           wallet = new ethers.Wallet(formattedKey);
+                           throw new Error(data.error);
                          }
-
-                         setWalletStatusMessage("Fetching balance from network...");
-                         // Using public RPC to fetch ETH balance (could be any EVM chain)
-                         const provider = new ethers.JsonRpcProvider("https://eth.llamarpc.com");
-                         const balanceWei = await provider.getBalance(wallet.address);
-                         const balanceEth = Number(ethers.formatEther(balanceWei));
-
-                         setWalletAddress(wallet.address.substring(0, 6) + "..." + wallet.address.substring(wallet.address.length - 4));
-                         setBalance(balanceEth);
-                         setWalletConnected(true);
-                         setIsConnectingWallet(false);
-                         setShowWalletModal(false);
-                         setImportInput("");
                        } catch (err: any) {
-                         setWalletError("Invalid Private Key or Seed Phrase.");
+                         const errorMessage = err.message || "Failed to verify API connection.";
+                         if (errorMessage.includes("Invalid API-key, IP, or permissions for action")) {
+                            setWalletError("Invalid API Key, IP address not allowed, or missing necessary permissions (like reading balances).");
+                         } else if (errorMessage.includes("Signature for this request is not valid")) {
+                            setWalletError("Signature verification failed. Please check if your Secret Key is correct.");
+                         } else if (errorMessage.includes("Failed to fetch") || errorMessage.includes("Network Error")) {
+                            setWalletError("Network error: Could not reach the server to verify your keys. Please check your connection.");
+                         } else {
+                            setWalletError(`API Verification Failed: ${errorMessage}`);
+                         }
                          setIsConnectingWallet(false);
+                         setIsImporting(true); // Allow them to edit properties again
                        }
                      }}
-                     className="flex-[2] py-2 bg-brand-cyan text-black hover:bg-brand-cyan/80 rounded transition-all font-bold text-xs"
+                     className="flex-[2] py-2 bg-brand-cyan text-black hover:bg-brand-cyan/80 rounded transition-all font-bold text-xs flex justify-center items-center gap-2"
                    >
-                     Import Wallet
+                     <Key size={14} className="shrink-0" />
+                     Connect API
                    </button>
                  </div>
                  <div className="mt-2 text-[10px] text-gray-500 flex items-start gap-1">
                    <Info size={12} className="shrink-0 mt-0.5" />
-                   <p>For your security during this simulation, any mock key can be used. Do not enter real seed phrases.</p>
+                   <p>Your keys are sent securely to the backend for verification. Enable "Spot Trading" and disable "Withdrawals" in Binance.</p>
                  </div>
               </div>
             ) : isConnectingWallet ? (
@@ -531,8 +603,8 @@ export default function App() {
                                 setIsConnectingWallet(false);
                               });
                         } else {
-                           setWalletError("Binance Wallet has not been detected. Please install the App or extension.");
-                           window.open("https://www.binance.com/en/web3wallet", "_blank");
+                           setWalletError("Binance Wallet not detected. If you are in the AI Studio preview iframe, please open the app in a new standalone tab.");
+                           setTimeout(() => { window.open("https://www.binance.com/en/web3wallet", "_blank"); }, 3000);
                         }
                      }
                   }}
@@ -571,8 +643,8 @@ export default function App() {
                               setIsConnectingWallet(false);
                            });
                      } else {
-                        setWalletError("Phantom Wallet not detected. Please install the browser extension.");
-                        window.open("https://phantom.app/", "_blank");
+                        setWalletError("Phantom Wallet not detected. If you are in the AI Studio preview iframe, please open the app in a new standalone tab.");
+                        setTimeout(() => { window.open("https://phantom.app/", "_blank"); }, 3000);
                      }
                   }}
                   className="w-full flex items-center justify-between px-4 py-3 bg-bg-primary border border-border-dim/50 hover:border-[#AB9FF2]/50 hover:bg-[#AB9FF2]/5 rounded transition-all group group-hover:shadow-[0_0_15px_rgba(171,159,242,0.1)]"
@@ -606,8 +678,8 @@ export default function App() {
                       <Key size={16} className="text-gray-400 group-hover:text-white transition-colors" />
                     </div>
                     <div className="text-left">
-                      <div className="font-bold text-sm group-hover:text-white transition-colors">Import Wallet</div>
-                      <div className="text-[10px] text-gray-500 font-mono">Use Private Key or Seed Phrase</div>
+                      <div className="font-bold text-sm group-hover:text-white transition-colors">Connect API Keys</div>
+                      <div className="text-[10px] text-gray-500 font-mono">Binance API Key and Secret</div>
                     </div>
                   </div>
                   <ChevronRight size={16} className="text-gray-600 group-hover:text-white" />
@@ -708,8 +780,8 @@ export default function App() {
             >
               <Wallet size={12} />
               {walletConnected
-                ? `${walletAddress} | $${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                : "CONNECT WALLET"}
+                ? `API: ${walletAddress} | $${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : "CONNECT API"}
             </button>
             {walletConnected && (
               <button
