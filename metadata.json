@@ -1,0 +1,6 @@
+{
+  "name": "Quantango",
+  "description": "Full-stack React + Node.js AI-powered trading intelligence application with live Binance market data, custom indicators, and Anthropic AI predictions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-emerald: #00FF9D;
+  --color-brand-red: #FF3366;
+  --color-brand-cyan: #00E5FF;
+  --color-bg-primary: #050505;
+  --color-bg-secondary: #0A0A0A;
+  --color-border-dim: #1F1F1F;
+  
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  body {
+    @apply bg-bg-primary text-gray-300 font-sans selection:bg-brand-emerald/30;
+  }
+  
+  .font-mono {
+    @apply font-mono;
+  }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.animate-blink {
+  animation: blink 1.4s infinite;
+}
+
+.glass-panel {
+  @apply bg-bg-secondary border border-border-dim rounded-xl;
+}
+
+.terminal-input {
+  @apply bg-bg-primary border border-border-dim rounded-md px-3 py-1.5 text-xs font-mono focus:border-brand-emerald outline-none transition-colors;
+}
