@@ -10,11 +10,19 @@ router.post('/', async (req, res) => {
   }
   try {
     const data: any = await getAccountInfo({ apiKey, secretKey });
+
+    if (!data || typeof data !== 'object') {
+      return res.status(400).json({ success: false, error: 'Invalid response from Binance' });
+    }
     
     // Sum USDT balance or return full data
     let totalBalance = 0;
-    if (data && data.USDT) {
+    if (data.USDT) {
       totalBalance = parseFloat(data.USDT.available || '0');
+    }
+
+    if (totalBalance === 0 && !data.USDT) {
+      return res.status(400).json({ success: false, error: 'Could not read balance. Check API permissions.' });
     }
 
     res.json({ success: true, data, balance: totalBalance });

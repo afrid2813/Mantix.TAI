@@ -84,7 +84,7 @@ export default function App() {
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [walletConnected, setWalletConnected] = useState(false);
   const [walletAddress, setWalletAddress] = useState("");
-  const [balance, setBalance] = useState(25000);
+  const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [showTransactions, setShowTransactions] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
