@@ -8,8 +8,8 @@ import path from 'path';
 import crypto from 'crypto';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import tradeRoute from './routes/trade.js';
-import accountRoute from './routes/account.js';
+import tradeRoute from './routes/trade.ts';
+import accountRoute from './routes/account.ts';
 
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);

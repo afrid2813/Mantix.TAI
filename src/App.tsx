@@ -87,7 +87,8 @@ export default function App() {
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [showTransactions, setShowTransactions] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
+  const [importMethod, setImportMethod] = useState<"binance" | "vantage" | null>(null);
+  const [vantageServer, setVantageServer] = useState("");
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [apiSecretInput, setApiSecretInput] = useState("");
   const [apiCredentials, setApiCredentials] = useState<{apiKey: string, apiSecret: string} | null>(null);
@@ -434,7 +435,7 @@ export default function App() {
               </div>
             )}
             
-            {isImporting ? (
+            {importMethod === "binance" ? (
               <div className="flex flex-col gap-3">
                  <p className="text-xs text-gray-300 font-mono">Enter your Binance API Key and Secret to connect your account.</p>
                  
@@ -494,7 +495,7 @@ export default function App() {
 
                  <div className="flex gap-2 mt-2">
                    <button 
-                     onClick={() => { setIsImporting(false); setApiKeyInput(""); setApiSecretInput(""); setWalletError(null); }}
+                     onClick={() => { setImportMethod(null); setApiKeyInput(""); setApiSecretInput(""); setWalletError(null); }}
                      className="flex-1 py-2 bg-bg-primary border border-border-dim hover:bg-bg-primary/80 rounded transition-all font-bold text-xs"
                    >
                      Cancel
@@ -514,8 +515,8 @@ export default function App() {
                          return;
                        }
 
-                       setWalletStatusMessage("Verifying API Keys...");
-                       setIsImporting(false);
+                       setWalletStatusMessage("Verifying Binance Keys...");
+                       setImportMethod(null);
                        setIsConnectingWallet(true);
                        try {
                          const res = await fetch('/api/account', {
@@ -553,18 +554,113 @@ export default function App() {
                             setWalletError(`API Verification Failed: ${errorMessage}`);
                          }
                          setIsConnectingWallet(false);
-                         setIsImporting(true); // Allow them to edit properties again
+                         setImportMethod("binance");
                        }
                      }}
                      className="flex-[2] py-2 bg-brand-cyan text-black hover:bg-brand-cyan/80 rounded transition-all font-bold text-xs flex justify-center items-center gap-2"
                    >
                      <Key size={14} className="shrink-0" />
-                     Connect API
+                     Connect Binance
                    </button>
                  </div>
                  <div className="mt-2 text-[10px] text-gray-500 flex items-start gap-1">
                    <Info size={12} className="shrink-0 mt-0.5" />
-                   <p>Your keys are sent securely to the backend for verification. Enable "Spot Trading" and disable "Withdrawals" in Binance.</p>
+                   <p>Your keys are sent securely to the backend for verification. Enable "Spot Trading" and disable "Withdrawals".</p>
+                 </div>
+              </div>
+            ) : importMethod === "vantage" ? (
+              <div className="flex flex-col gap-3">
+                 <p className="text-xs text-blue-300 font-mono">Enter your Vantage Markets API credentials to connect your account.</p>
+                 
+                 <div className="relative">
+                   <input 
+                     type="text"
+                     className={cn(
+                       "w-full bg-black/50 border rounded p-2 text-white font-mono text-xs focus:outline-none transition-colors border-border-dim focus:border-blue-500"
+                     )}
+                     placeholder="Vantage Account ID (e.g., 1234567)"
+                   />
+                 </div>
+                 
+                 <div className="relative">
+                   <input 
+                     type="text"
+                     className={cn(
+                       "w-full bg-black/50 border rounded p-2 text-white font-mono text-xs focus:outline-none transition-colors border-border-dim focus:border-blue-500"
+                     )}
+                     placeholder="Vantage Server (e.g., VantageFX-Live 1)"
+                     value={vantageServer}
+                     onChange={(e) => setVantageServer(e.target.value)}
+                   />
+                 </div>
+
+                 <div className="relative">
+                   <input 
+                     type="text"
+                     className={cn(
+                       "w-full bg-black/50 border rounded p-2 text-white font-mono text-xs focus:outline-none transition-colors border-border-dim focus:border-blue-500"
+                     )}
+                     placeholder="Vantage API Token / Key"
+                   />
+                 </div>
+
+                 <div className="flex gap-2 mt-2">
+                   <button 
+                     onClick={() => { setImportMethod(null); setWalletError(null); }}
+                     className="flex-1 py-2 bg-bg-primary border border-border-dim hover:bg-bg-primary/80 rounded transition-all font-bold text-xs"
+                   >
+                     Cancel
+                   </button>
+                   <button 
+                     onClick={async () => {
+                        if (!apiKeyInput || !apiSecretInput) {
+                           setWalletError("Account ID and Token are required.");
+                           return;
+                        }
+                        setWalletStatusMessage("Connecting to Vantage VPS...");
+                        setImportMethod(null);
+                        setIsConnectingWallet(true);
+                        try {
+                          const res = await fetch('/api/account', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              apiKey: apiKeyInput.trim(),
+                              secretKey: apiSecretInput.trim(),
+                              server: vantageServer.trim(),
+                              type: 'vantage'
+                            })
+                          });
+                          const data = await res.json();
+                          if (data.success) {
+                            setWalletAddress("VANTAGE_" + apiKeyInput.trim().substring(0, 4));
+                            setBalance(data.balance);
+                            setApiCredentials({ 
+                               apiKey: apiKeyInput.trim(), 
+                               apiSecret: apiSecretInput.trim(),
+                               server: vantageServer.trim()
+                            });
+                            setWalletConnected(true);
+                            setShowWalletModal(false);
+                          } else {
+                            setWalletError(data.error || "Failed to verify Vantage credentials");
+                            setImportMethod("vantage");
+                          }
+                        } catch (err: any) {
+                          setWalletError("Connection error: " + err.message);
+                          setImportMethod("vantage");
+                        }
+                        setIsConnectingWallet(false);
+                     }}
+                     className="flex-[2] py-2 bg-blue-500 text-black hover:bg-blue-400 rounded transition-all font-bold text-xs flex justify-center items-center gap-2"
+                   >
+                     <Wallet size={14} className="shrink-0" />
+                     Connect Vantage
+                   </button>
+                 </div>
+                 <div className="mt-2 text-[10px] text-gray-500 flex items-start gap-1">
+                   <Info size={12} className="shrink-0 mt-0.5" />
+                   <p>To implement live sync, the server needs the MT4/MT5 REST endpoint provided by Vantage Networks or your active MetaApi account URL.</p>
                  </div>
               </div>
             ) : isConnectingWallet ? (
@@ -578,89 +674,19 @@ export default function App() {
             ) : (
               <div className="flex flex-col gap-3">
                 <button 
-                  onClick={() => {
-                     // Attempt to open Binance App via deep link
-                     if (isMobile) {
-                        window.location.href = "bnc://app.binance.com/";
-                        setTimeout(() => {
-                          setWalletError("If the Binance app didn't open, please ensure it is installed.");
-                        }, 2000);
-                     } else {
-                        // Check if browser extension exists
-                        if (typeof (window as any).BinanceChain !== "undefined") {
-                           setWalletStatusMessage("Requesting connection to Binance Wallet...");
-                           setIsConnectingWallet(true);
-                           (window as any).BinanceChain.request({ method: 'eth_requestAccounts' })
-                              .then((accounts: string[]) => {
-                                 setWalletAddress(accounts[0].substring(0, 6) + "..." + accounts[0].substring(accounts[0].length - 4));
-                                 setBalance(Math.floor(Math.random() * 50000) + 10000);
-                                 setWalletConnected(true);
-                                 setIsConnectingWallet(false);
-                                 setShowWalletModal(false);
-                              })
-                              .catch((err: any) => {
-                                setWalletError(err.message || "Failed to connect to Binance Wallet");
-                                setIsConnectingWallet(false);
-                              });
-                        } else {
-                           setWalletError("Binance Wallet not detected. If you are in the AI Studio preview iframe, please open the app in a new standalone tab.");
-                           setTimeout(() => { window.open("https://www.binance.com/en/web3wallet", "_blank"); }, 3000);
-                        }
-                     }
-                  }}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-bg-primary border border-border-dim/50 hover:border-[#FCD535]/50 hover:bg-[#FCD535]/5 rounded transition-all group group-hover:shadow-[0_0_15px_rgba(252,213,53,0.1)]"
+                  onClick={() => setImportMethod("vantage")}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-bg-primary border border-border-dim/50 hover:border-blue-500/50 hover:bg-blue-500/5 rounded transition-all group group-hover:shadow-[0_0_15px_rgba(59,130,246,0.1)]"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-[#FCD535]/10 flex items-center justify-center">
-                      <div className="w-5 h-5 rounded bg-[#FCD535] flex items-center justify-center text-black font-bold text-[10px]">BNB</div>
+                    <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center">
+                      <Wallet size={16} className="text-blue-500 group-hover:text-blue-400 transition-colors" />
                     </div>
                     <div className="text-left">
-                      <div className="font-bold text-sm group-hover:text-[#FCD535] transition-colors">Binance Web3 Wallet</div>
-                      <div className="text-[10px] text-gray-500 font-mono">Binance App / Extension</div>
+                      <div className="font-bold text-sm group-hover:text-blue-400 transition-colors">Vantage Account Connect</div>
+                      <div className="text-[10px] text-gray-500 font-mono">Connect your Vantage Markets account</div>
                     </div>
                   </div>
-                  <ChevronRight size={16} className="text-gray-600 group-hover:text-[#FCD535]" />
-                </button>
-                
-                <button 
-                  onClick={() => {
-                     // Phantom wallet integration
-                     const isPhantomInstalled = (window as any).phantom?.solana?.isPhantom || (window as any).solana?.isPhantom;
-                     if (isPhantomInstalled) {
-                        const provider = (window as any).phantom?.solana || (window as any).solana;
-                        setWalletStatusMessage("Connecting to Phantom...");
-                        setIsConnectingWallet(true);
-                        provider.connect()
-                           .then((resp: any) => {
-                              setWalletAddress(resp.publicKey.toString().substring(0, 6) + "..." + resp.publicKey.toString().substring(resp.publicKey.toString().length - 4));
-                              setBalance(Math.random() * 100); // Mock SOL balance 
-                              setWalletConnected(true);
-                              setIsConnectingWallet(false);
-                              setShowWalletModal(false);
-                           })
-                           .catch((err: any) => {
-                              setWalletError(err.message || "Failed to connect to Phantom");
-                              setIsConnectingWallet(false);
-                           });
-                     } else {
-                        setWalletError("Phantom Wallet not detected. If you are in the AI Studio preview iframe, please open the app in a new standalone tab.");
-                        setTimeout(() => { window.open("https://phantom.app/", "_blank"); }, 3000);
-                     }
-                  }}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-bg-primary border border-border-dim/50 hover:border-[#AB9FF2]/50 hover:bg-[#AB9FF2]/5 rounded transition-all group group-hover:shadow-[0_0_15px_rgba(171,159,242,0.1)]"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-[#AB9FF2]/10 flex items-center justify-center">
-                      <div className="w-5 h-5 rounded-full bg-[#AB9FF2] flex items-center justify-center text-white border border-white/20">
-                          <svg width="12" height="12" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M54.5455 11.239C63.8182 12.0163 118.727 16.294 121.818 51.6841C122.909 63.3551 113.818 73.0805 106.909 77.3582C96.3636 84.7495 62.1818 64.9094 58.9091 59.8521L58.5455 60.241C55.2727 64.5204 22.9091 80.8601 22.9091 80.8601L25.8182 60.241C25.8182 60.241 -2.90909 46.2343 0.363636 29.8967C2.90909 8.11326 43.6364 10.4616 54.5455 11.239Z" fill="white"/><path d="M78.1818 41.1793C83.2727 41.1793 87.2727 45.0684 87.2727 50.1264C87.2727 55.1843 83.2727 59.0734 78.1818 59.0734C73.0909 59.0734 69.0909 55.1843 69.0909 50.1264C69.0909 45.0684 73.0909 41.1793 78.1818 41.1793Z" fill="#AB9FF2"/><path d="M43.6364 41.1793C48.7273 41.1793 52.7273 45.0684 52.7273 50.1264C52.7273 55.1843 48.7273 59.0734 43.6364 59.0734C38.5455 59.0734 34.5455 55.1843 34.5455 50.1264C34.5455 45.0684 38.5455 41.1793 43.6364 41.1793Z" fill="#AB9FF2"/></svg>
-                      </div>
-                    </div>
-                    <div className="text-left">
-                      <div className="font-bold text-sm group-hover:text-[#AB9FF2] transition-colors">Phantom</div>
-                      <div className="text-[10px] text-gray-500 font-mono">Solana / Ethereum Extension</div>
-                    </div>
-                  </div>
-                  <ChevronRight size={16} className="text-gray-600 group-hover:text-[#AB9FF2]" />
+                  <ChevronRight size={16} className="text-gray-600 group-hover:text-blue-400" />
                 </button>
 
                 <div className="relative flex py-2 items-center">
@@ -670,7 +696,7 @@ export default function App() {
                 </div>
 
                 <button 
-                  onClick={() => setIsImporting(true)}
+                  onClick={() => setImportMethod("binance")}
                   className="w-full flex items-center justify-between px-4 py-3 bg-bg-primary border border-border-dim/50 hover:border-gray-400/50 hover:bg-gray-400/5 rounded transition-all group group-hover:shadow-[0_0_15px_rgba(156,163,175,0.1)]"
                 >
                   <div className="flex items-center gap-3">
@@ -1167,6 +1193,8 @@ export default function App() {
               walletConnected={walletConnected}
               balance={balance}
               setBalance={setBalance}
+              apiCredentials={apiCredentials}
+              importMethod={importMethod}
               aiSignal={
                 currentSignal?.type === "BUY"
                   ? "bullish"

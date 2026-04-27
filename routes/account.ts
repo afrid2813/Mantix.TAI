@@ -1,13 +1,43 @@
 import { Router } from 'express';
 import { getAccountInfo } from '../services/binanceService.js';
+import fetch from 'node-fetch';
 
 const router = Router();
 
 router.post('/', async (req, res) => {
-  const { apiKey, secretKey } = req.body;
+  const { apiKey, secretKey, type } = req.body;
   if (!apiKey || !secretKey) {
     return res.status(400).json({ success: false, error: 'API Key and Secret Key are required' });
   }
+
+  if (type === 'vantage') {
+    const vpsUrl = process.env.VPS_API_URL || 'http://69.169.97.10:8000';
+    try {
+      const response = await fetch(`${vpsUrl}/account`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          account_id: apiKey,
+          token: secretKey,
+          server: req.body.server,
+        }),
+      });
+
+      const data: any = await response.json();
+      if (response.ok) {
+        return res.json({ 
+          success: true, 
+          data: data, 
+          balance: data.balance || data.equity || 0 
+        });
+      } else {
+        return res.status(response.status).json({ success: false, error: data.message || 'VPS Account check failed' });
+      }
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: `VPS Connection failed: ${err.message}` });
+    }
+  }
+
   try {
     const data: any = await getAccountInfo({ apiKey, secretKey });
 

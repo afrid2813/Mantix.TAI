@@ -34,6 +34,8 @@ interface QuantumBotProps {
   aiSignal: "bullish" | "bearish" | "neutral" | string;
   technicalSignal?: { rsi: number, macdSignal: string, trend: string };
   onTradeClose?: (trade: Transaction) => void;
+  apiCredentials?: { apiKey: string, apiSecret: string, server?: string } | null;
+  importMethod?: "binance" | "vantage" | null;
 }
 
 export function QuantumBotWidget({
@@ -44,9 +46,11 @@ export function QuantumBotWidget({
   setBalance,
   aiSignal,
   technicalSignal,
-  onTradeClose,
+  apiCredentials,
+  importMethod,
 }: QuantumBotProps) {
   const [active, setActive] = useState(false);
+  const [isLive, setIsLive] = useState(false);
   const [positions, setPositions] = useState<Position[]>([]);
   const [tradeCount, setTradeCount] = useState(0);
   const [speedMs, setSpeedMs] = useState(500); // MS execution speed
@@ -289,17 +293,50 @@ export function QuantumBotWidget({
           // Execute only if action is BUY or SELL
           if (executionSignal.action !== "HOLD") {
             const type = executionSignal.action === "BUY" ? "LONG" : "SHORT";
-            newPositions.push({
-              id: Math.random().toString(36).substring(2, 10) + Date.now().toString(36),
-              symbol,
-              type,
-              entryPrice: executionSignal.entry_price,
-              size: executionSignal.position_size,
-              pnl: 0,
-              time: new Date(),
-              // Store metadata for UI or logging if needed
-              meta: executionSignal
-            });
+            
+            if (isLive && apiCredentials) {
+                fetch('/api/trade', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    apiKey: apiCredentials.apiKey,
+                    secretKey: apiCredentials.apiSecret,
+                    server: apiCredentials.server,
+                    symbol,
+                    side: executionSignal.action,
+                    quantity: executionSignal.position_size,
+                    type: importMethod
+                  })
+                }).then(r => r.json()).then(data => {
+                  if (data.success) {
+                    setPositions(prev => {
+                      const orderId = (data.data?.orderId || data.data?.id || Math.random().toString(36).substring(2, 6)).toString();
+                      if (prev.find(p => p.id === orderId)) return prev;
+                      return [...prev, {
+                        id: orderId,
+                        symbol,
+                        type,
+                        entryPrice: executionSignal.entry_price,
+                        size: executionSignal.position_size,
+                        pnl: 0,
+                        time: new Date(),
+                        meta: executionSignal
+                      }];
+                    });
+                  }
+                }).catch(err => console.error("Live Order Error:", err));
+            } else {
+              newPositions.push({
+                id: Math.random().toString(36).substring(2, 10) + Date.now().toString(36),
+                symbol,
+                type,
+                entryPrice: executionSignal.entry_price,
+                size: executionSignal.position_size,
+                pnl: 0,
+                time: new Date(),
+                meta: executionSignal
+              });
+            }
             setTimeout(() => {
               setTotalInvestment((inv) => inv + executionSignal.position_size);
             }, 0);
@@ -332,15 +369,34 @@ export function QuantumBotWidget({
       <div className="absolute inset-0 z-0 opacity-10 bg-[linear-gradient(rgba(0,255,255,0.1)_1px,transparent_1px),linear-gradient(90deg,rgba(0,255,255,0.1)_1px,transparent_1px)] bg-[size:20px_20px]" />
 
       <div className="px-4 py-3 border-b border-[#00FFFF]/20 bg-black/40 flex justify-between items-center z-10">
-        <span className="text-[10px] font-bold text-[#00FFFF] font-mono tracking-widest uppercase items-center flex gap-2">
-          <Cpu size={12} className={active ? "animate-pulse" : ""} />
-          Quantum Execution Engine
-        </span>
-        {active && (
-          <span className="text-[9px] text-[#00FFFF] border border-[#00FFFF]/40 bg-[#00FFFF]/10 px-1.5 py-0.5 rounded font-mono animate-pulse">
-            HFT ACTIVE
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] font-bold text-[#00FFFF] font-mono tracking-widest uppercase items-center flex gap-2">
+            <Cpu size={12} className={active ? "animate-pulse" : ""} />
+            Quantum Execution Engine
           </span>
-        )}
+          {active && (
+            <span className="text-[9px] text-[#00FFFF] border border-[#00FFFF]/40 bg-[#00FFFF]/10 px-1.5 py-0.5 rounded font-mono animate-pulse">
+              {isLive ? "LIVE EXECUTION" : "HFT SIMULATION"}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={cn("text-[9px] font-mono", isLive ? "text-brand-red font-bold" : "text-gray-500")}>
+            LIVE MODE
+          </span>
+          <button 
+            onClick={() => setIsLive(!isLive)}
+            className={cn(
+              "w-8 h-4 rounded-full relative transition-all",
+              isLive ? "bg-brand-red" : "bg-gray-800"
+            )}
+          >
+            <div className={cn(
+              "absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all",
+              isLive ? "right-0.5" : "left-0.5"
+            )} />
+          </button>
+        </div>
       </div>
 
       <div className="p-4 flex-1 flex flex-col gap-4 z-10 overflow-y-auto custom-scrollbar">
