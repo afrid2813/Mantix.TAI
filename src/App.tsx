@@ -34,6 +34,7 @@ import {
   Key,
   Check,
   AlertCircle,
+  TrendingDown,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "./lib/utils";
@@ -85,7 +86,8 @@ export default function App() {
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [walletConnected, setWalletConnected] = useState(false);
   const [walletAddress, setWalletAddress] = useState("");
-  const [balance, setBalance] = useState(0);
+  const [balance, setBalance] = useState(50000); // $50k demo balance
+  const [rawEthBalance, setRawEthBalance] = useState<number | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [showTransactions, setShowTransactions] = useState(false);
   const [importMethod, setImportMethod] = useState<"binance" | "vantage" | null>(null);
@@ -139,6 +141,16 @@ export default function App() {
   const wsRef = useRef<WebSocket | null>(null);
 
   const pendingMarketData = useRef<CandleData[]>([]);
+
+  // Reactive balance conversion for ETH
+  useEffect(() => {
+    if (walletConnected && rawEthBalance !== null) {
+      const ethPrice = tickers['ETHUSDT']?.price || tickers['ethusdt']?.price;
+      if (ethPrice) {
+        setBalance(rawEthBalance * ethPrice);
+      }
+    }
+  }, [tickers, walletConnected, rawEthBalance]);
 
   // Throttled updates for tickers and market data
   useEffect(() => {
@@ -398,12 +410,21 @@ export default function App() {
         const signer = await provider.getSigner();
         const address = await signer.getAddress();
         const balanceWei = await provider.getBalance(address);
+        const ethBalance = Number(ethers.formatEther(balanceWei));
+        setRawEthBalance(ethBalance);
         
         setWalletConnected(true);
         setWalletAddress(
           address.substring(0, 6) + "..." + address.substring(address.length - 4)
         );
-        setBalance(Number(ethers.formatEther(balanceWei)));
+        
+        // Initial conversion if possible, otherwise it will be updated by the ticker effect
+        let finalBalance = ethBalance;
+        const ethPrice = tickers['ETHUSDT']?.price || tickers['ethusdt']?.price;
+        if (ethPrice) {
+          finalBalance = ethBalance * ethPrice;
+        }
+        setBalance(finalBalance);
         setShowWalletModal(false);
       } catch (error: any) {
         console.error("Web3 Wallet connection failed", error);
@@ -983,8 +1004,9 @@ export default function App() {
             </div>
           </div>
           <div className="glass-panel p-4">
-            <div className="text-[10px] text-gray-500 font-bold tracking-widest mb-1">
+            <div className="text-[10px] text-gray-500 font-bold tracking-widest mb-1 flex justify-between items-center">
               24H CHANGE
+              {metrics.change >= 0 ? <TrendingUp size={10} className="text-brand-emerald" /> : <TrendingDown size={10} className="text-brand-red" />}
             </div>
             <div
               className={cn(

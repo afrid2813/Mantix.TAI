@@ -57,6 +57,8 @@ export function QuantumBotWidget({
   const [speedMs, setSpeedMs] = useState(500); // MS execution speed
   const [takeProfitPct, setTakeProfitPct] = useState(85); // 85% expected return based on user requirements
   const [stopLossPct, setStopLossPct] = useState(15); // 15% stop loss
+  const [riskPerTrade, setRiskPerTrade] = useState(2); // 2% of balance per trade
+  const [minPositionSize, setMinPositionSize] = useState(10); // Minimum $10
   const [confidenceThreshold, setConfidenceThreshold] = useState(2.0);
   const [aiWeight, setAiWeight] = useState(50); // 0-100% (50 = equal weight with Tech)
   const [hashRate, setHashRate] = useState(0);
@@ -71,6 +73,12 @@ export function QuantumBotWidget({
   const maxPositions = 5;
   const activeRef = useRef(active);
   activeRef.current = active;
+  
+  const riskPerTradeRef = useRef(riskPerTrade);
+  riskPerTradeRef.current = riskPerTrade;
+  
+  const minPositionSizeRef = useRef(minPositionSize);
+  minPositionSizeRef.current = minPositionSize;
 
   const currentPriceRef = useRef(currentPrice);
   currentPriceRef.current = currentPrice;
@@ -128,7 +136,7 @@ export function QuantumBotWidget({
 
   // High Frequency Trading Logic
   useEffect(() => {
-    if (!active || !walletConnected) return;
+    if (!active) return;
 
     const timer = setInterval(() => {
       if (!activeRef.current) return;
@@ -269,10 +277,20 @@ export function QuantumBotWidget({
             reason = "Awaiting multi-layer confirmation";
           }
 
-          // Position Sizing: Scale based on confidence. Max risk 1%.
-          // if confidence is 100%, risk 1%. if 50%, risk 0.5%.
-          const riskMultiplier = Math.max(0.2, confidence / 100);
-          const dynamicPositionSize = balance * 0.01 * riskMultiplier;
+          // Position Sizing: Scale based on confidence.
+          // if confidence is 100%, risk the full 'riskPerTrade' %.
+          const riskMultiplier = Math.max(0.1, confidence / 100);
+          let dynamicPositionSize = balance * (riskPerTradeRef.current / 100) * riskMultiplier;
+          
+          // Enforce minimum position size
+          if (dynamicPositionSize < minPositionSizeRef.current) {
+            dynamicPositionSize = minPositionSizeRef.current;
+          }
+          
+          // Safety check: ensure we don't exceed balance
+          if (dynamicPositionSize > balance * 0.9) {
+            dynamicPositionSize = balance * 0.9;
+          }
 
           // Generate requested output structure
           const executionSignal = {
@@ -401,6 +419,20 @@ export function QuantumBotWidget({
       </div>
 
       <div className="p-4 flex-1 flex flex-col gap-4 z-10 overflow-y-auto custom-scrollbar">
+        {/* Connection Info */}
+        {walletConnected && (
+          <div className="flex items-center justify-between px-3 py-2 bg-brand-cyan/5 border border-brand-cyan/20 rounded text-[9px] font-mono">
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-brand-cyan animate-pulse" />
+              <span className="text-gray-400 uppercase">Capital Source:</span>
+              <span className="text-brand-cyan font-bold truncate max-w-[100px]">CONNECTED WALLET</span>
+            </div>
+            <div className="text-white font-bold">
+              ${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+          </div>
+        )}
+
         {/* Controls */}
         <div className="flex flex-col gap-3 mb-1">
           <button
@@ -479,6 +511,39 @@ export function QuantumBotWidget({
                       value={stopLossPct}
                       onChange={(e) => setStopLossPct(Number(e.target.value))}
                       className="w-full h-1 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-brand-red"
+                    />
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4 pt-1 border-t border-white/5 disabled:opacity-50">
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex justify-between items-center text-[8px] font-mono text-gray-500 uppercase">
+                      <span>Risk Per Trade</span>
+                      <span className="text-brand-cyan font-bold">{riskPerTrade}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.1"
+                      max="10.0"
+                      step="0.1"
+                      value={riskPerTrade}
+                      onChange={(e) => setRiskPerTrade(Number(e.target.value))}
+                      className="w-full h-1 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-brand-cyan"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex justify-between items-center text-[8px] font-mono text-gray-500 uppercase">
+                       <span>Min Size ($)</span>
+                       <span className="text-brand-purple font-bold">${minPositionSize}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="1"
+                      max="100"
+                      step="1"
+                      value={minPositionSize}
+                      onChange={(e) => setMinPositionSize(Number(e.target.value))}
+                      className="w-full h-1 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-brand-purple"
                     />
                   </div>
                 </div>
@@ -686,6 +751,7 @@ export function QuantumBotWidget({
                       {p.type}
                     </span>
                     <span className="text-white text-[10px]">{p.symbol}</span>
+                    <span className="text-[10px] text-gray-500 font-bold ml-1">${p.size.toFixed(2)}</span>
                   </div>
                   <div className="flex flex-col items-end">
                     <span
