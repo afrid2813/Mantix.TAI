@@ -18,13 +18,17 @@ router.post('/', async (req, res) => {
   if (type === 'vantage') {
     const vpsUrl = process.env.VPS_API_URL || 'http://69.169.97.10:8000';
     try {
-      const response = await axios.post(`${vpsUrl}/trade`, {
-        account_id: apiKey,
-        token: secretKey,
-        server: req.body.server,
-        symbol,
-        action: side.toLowerCase(),
-        volume: quantity,
+      const action = side === 'BUY' ? 'buy' : 'sell';
+      const lot = quantity || 0.01;
+      
+      // Explicitly call POST with only query params and no body to avoid 422 errors
+      const response = await axios({
+        method: 'post',
+        url: `${vpsUrl}/trade`,
+        params: {
+          action,
+          lot
+        }
       });
 
       if (response.status === 200) {
