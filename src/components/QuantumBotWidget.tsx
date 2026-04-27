@@ -54,7 +54,7 @@ export function QuantumBotWidget({
 }: QuantumBotProps) {
   const [active, setActive] = useState(false);
   const [isLive, setIsLive] = useState(true);
-  const [mtBalance, setMtBalance] = useState(0);
+  const [mtBalance, setMtBalance] = useState<number | null>(null);
   const [positions, setPositions] = useState<any[]>([]);
   const [tradeCount, setTradeCount] = useState(0);
   const [speedMs, setSpeedMs] = useState(500); // MS execution speed
@@ -90,8 +90,8 @@ export function QuantumBotWidget({
 
   const currentPriceRef = useRef(currentPrice);
   currentPriceRef.current = currentPrice;
-  const balanceRef = useRef(mtBalance);
-  balanceRef.current = mtBalance;
+  const balanceRef = useRef(mtBalance || 0);
+  balanceRef.current = mtBalance || 0;
   const aiSignalRef = useRef(aiSignal);
   aiSignalRef.current = aiSignal;
   const confidenceThresholdRef = useRef(confidenceThreshold);
@@ -103,24 +103,19 @@ export function QuantumBotWidget({
 
   // VPS MT5 Integration - Account Balance
   useEffect(() => {
-    const fetchBalance = async () => {
+    const fetchAccount = async () => {
       try {
         const res = await fetch('/api/vps/account');
-        if (!res.ok) {
-           console.warn("VPS Balance probe failed with status:", res.status);
-           return;
-        }
         const data = await res.json();
-        if (data && data.balance !== undefined) {
+        if (data.balance !== undefined) {
           setMtBalance(data.balance);
         }
       } catch (err) {
-        // Log errors but don't break the component
-        console.error("VPS Balance Sync Error:", err);
+        console.error('Account fetch failed:', err);
       }
     };
-    fetchBalance();
-    const interval = setInterval(fetchBalance, 8000); // Relaxed frequency to avoid socket hangups on slow terminals
+    fetchAccount();
+    const interval = setInterval(fetchAccount, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -129,22 +124,20 @@ export function QuantumBotWidget({
     const fetchPositions = async () => {
       try {
         const res = await fetch('/api/vps/positions');
-        if (!res.ok) {
-          console.warn("VPS Positions probe failed with status:", res.status);
-          return;
-        }
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          setPositions(data);
-        } else if (data && Array.isArray(data.positions)) {
-           setPositions(data.positions);
+        if (res.ok) {
+          const positionsData = await res.json();
+          if (Array.isArray(positionsData)) {
+            setPositions(positionsData);
+          } else if (positionsData && Array.isArray(positionsData.positions)) {
+            setPositions(positionsData.positions);
+          }
         }
       } catch (err) {
         console.error("VPS Positions Sync Error:", err);
       }
     };
     fetchPositions();
-    const interval = setInterval(fetchPositions, 8000); // Relaxed frequency
+    const interval = setInterval(fetchPositions, 8000);
     return () => clearInterval(interval);
   }, []);
 
@@ -152,19 +145,23 @@ export function QuantumBotWidget({
     try {
       setExecutionError(null);
       const res = await fetch(
-        `/api/vps/trade?action=${action.toLowerCase()}&lot=0.01`,
+        `/api/vps/trade?action=${action.toLowerCase()}&lot=${fixedLotSizeRef.current}`,
         { method: 'POST' }
       );
-      const data = await res.json();
-      if (data.status === "success" || data.success) {
+      
+      const data = await res.json().catch(() => null);
+      
+      if (res.ok && data && (data.status === "success" || data.success)) {
         console.log(`VPS ${action} executed successfully`);
         setTradeCount(c => c + 1);
       } else {
-        setExecutionError(data.error || "VPS execution error");
+        const errorMsg = data?.error || data?.message || `Execution Failed (Status: ${res.status})`;
+        console.error("VPS Rejection:", errorMsg);
+        setExecutionError(errorMsg);
       }
-    } catch (err) {
-      console.error("VPS Execution Error:", err);
-      setExecutionError("VPS Connection Error");
+    } catch (err: any) {
+      console.error("VPS Connection Error:", err);
+      setExecutionError(`Network Error: ${err.message || 'Check VPS connectivity'}`);
     }
   };
 
@@ -301,7 +298,7 @@ export function QuantumBotWidget({
 
           // Define execution parameters
           let tradeQuantity = 0;
-          const currentBalance = mtBalance;
+          const currentBalance = mtBalance || 0;
           
           if (isLive) {
             // Use user-defined lot size for MT5
@@ -403,11 +400,9 @@ export function QuantumBotWidget({
         )}>
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full animate-pulse bg-brand-cyan" />
-            <span className="text-gray-400 uppercase">WALLET READY:</span>
-            <span className="font-bold truncate text-brand-cyan uppercase">VANTAGE MT5</span>
-          </div>
-          <div className="text-white font-bold">
-            ${mtBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            <span className="text-brand-cyan font-bold uppercase truncate">
+              WALLET READY: VANTAGE MT5 {mtBalance !== null ? mtBalance.toFixed(2) : 'Loading...'}
+            </span>
           </div>
         </div>
 
@@ -718,7 +713,7 @@ export function QuantumBotWidget({
         <div className="flex flex-col flex-1 min-h-[140px]">
           <div className="text-[9px] text-gray-500 font-mono uppercase tracking-widest border-b border-border-dim pb-1 mb-2 flex justify-between">
             <span>MT5 Live Positions ({positions.length}/{maxPositions})</span>
-            {mtBalance !== 0 && <span className="text-brand-cyan">Equity: ${mtBalance.toFixed(2)}</span>}
+            {mtBalance !== null && <span className="text-brand-cyan">Equity: ${mtBalance.toFixed(2)}</span>}
           </div>
           {positions.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center text-gray-600 opacity-50 space-y-2 pb-4">
