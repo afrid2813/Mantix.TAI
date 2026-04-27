@@ -48,6 +48,7 @@ export function QuantumBotWidget({
   technicalSignal,
   apiCredentials,
   importMethod,
+  onTradeClose,
 }: QuantumBotProps) {
   const [active, setActive] = useState(false);
   const [isLive, setIsLive] = useState(false);

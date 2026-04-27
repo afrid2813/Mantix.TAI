@@ -42,16 +42,6 @@ export function StrategyMetricsWidget({ strategyName }: { strategyName: string }
     return () => clearInterval(interval);
   }, [strategyName]);
 
-  if (loading || !metrics) {
-    return (
-      <div className="glass-panel p-4 h-full flex items-center justify-center">
-        <div className="animate-pulse text-gray-500 text-[10px] font-mono tracking-widest uppercase">
-          Loading Metrics...
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="glass-panel p-4 h-full flex flex-col justify-between">
       <div className="flex items-center justify-between mb-4">
@@ -63,41 +53,67 @@ export function StrategyMetricsWidget({ strategyName }: { strategyName: string }
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <MetricItem 
-          label="Win Rate" 
-          value={`${metrics.winRate}%`} 
-          icon={<Target size={14} className="text-brand-emerald" />} 
-          subValue="Expected"
-        />
-        <MetricItem 
-          label="Avg Return" 
-          value={`+${metrics.avgReturn}%`} 
-          icon={<TrendingUp size={14} className="text-brand-emerald" />} 
-          subValue="Per Trade"
-        />
-        <MetricItem 
-          label="Trades" 
-          value={(metrics.numTrades || (metrics as any).totalTrades || 0).toString()} 
-          icon={<Hash size={14} className="text-gray-400" />} 
-          subValue="Historical"
-        />
-        <MetricItem 
-          label="Drawdown" 
-          value={`-${metrics.maxDrawdown}%`} 
-          icon={<Percent size={14} className="text-brand-red" />} 
-          subValue="Max Peak"
-        />
+        {loading || !metrics ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bg-bg-primary/30 p-2 rounded border border-border-dim/20 animate-pulse">
+              <div className="flex items-center justify-between mb-1">
+                <div className="h-2 w-12 bg-gray-800 rounded" />
+                <div className="h-3 w-3 bg-gray-800 rounded-full" />
+              </div>
+              <div className="flex items-baseline gap-1">
+                <div className="h-4 w-10 bg-gray-700 rounded mt-1" />
+                <div className="h-1.5 w-6 bg-gray-800 rounded" />
+              </div>
+            </div>
+          ))
+        ) : (
+          <>
+            <MetricItem 
+              label="Win Rate" 
+              value={`${metrics.winRate}%`} 
+              icon={<Target size={14} className="text-brand-emerald" />} 
+              subValue="Expected"
+            />
+            <MetricItem 
+              label="Avg Return" 
+              value={`+${metrics.avgReturn}%`} 
+              icon={<TrendingUp size={14} className="text-brand-emerald" />} 
+              subValue="Per Trade"
+            />
+            <MetricItem 
+              label="Trades" 
+              value={(metrics.numTrades || (metrics as any).totalTrades || 0).toString()} 
+              icon={<Hash size={14} className="text-gray-400" />} 
+              subValue="Historical"
+            />
+            <MetricItem 
+              label="Drawdown" 
+              value={`-${metrics.maxDrawdown}%`} 
+              icon={<Percent size={14} className="text-brand-red" />} 
+              subValue="Max Peak"
+            />
+          </>
+        )}
       </div>
 
       <div className="mt-4 pt-3 border-t border-border-dim/30 grid grid-cols-2 gap-4">
-        <div className="flex items-baseline justify-between">
-          <span className="text-[8px] text-gray-500 uppercase font-bold">Profit Factor</span>
-          <span className="text-xs font-mono font-bold text-white tracking-widest">{metrics.profitFactor}</span>
-        </div>
-        <div className="flex items-baseline justify-between">
-          <span className="text-[8px] text-gray-500 uppercase font-bold">Risk Level</span>
-          <span className="text-xs font-mono font-bold text-yellow-500 tracking-widest">MEDIUM</span>
-        </div>
+        {loading || !metrics ? (
+           <>
+             <div className="h-3 bg-gray-800 animate-pulse rounded" />
+             <div className="h-3 bg-gray-800 animate-pulse rounded" />
+           </>
+        ) : (
+          <>
+            <div className="flex items-baseline justify-between">
+              <span className="text-[8px] text-gray-500 uppercase font-bold">Profit Factor</span>
+              <span className="text-xs font-mono font-bold text-white tracking-widest">{metrics.profitFactor}</span>
+            </div>
+            <div className="flex items-baseline justify-between">
+              <span className="text-[8px] text-gray-500 uppercase font-bold">Risk Level</span>
+              <span className="text-xs font-mono font-bold text-yellow-500 tracking-widest">MEDIUM</span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

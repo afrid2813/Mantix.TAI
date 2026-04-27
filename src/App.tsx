@@ -27,6 +27,7 @@ import {
   Info,
   ChevronRight,
   Wallet,
+  Zap,
   History,
   ArrowRight,
   Loader2,
@@ -91,7 +92,37 @@ export default function App() {
   const [vantageServer, setVantageServer] = useState("");
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [apiSecretInput, setApiSecretInput] = useState("");
-  const [apiCredentials, setApiCredentials] = useState<{apiKey: string, apiSecret: string} | null>(null);
+  const [apiCredentials, setApiCredentials] = useState<{apiKey: string, apiSecret: string, server?: string} | null>(null);
+  const [mt5Positions, setMt5Positions] = useState<any[]>([]);
+  const [mt5AccountInfo, setMt5AccountInfo] = useState<any>(null);
+
+  // Poll Vantage positions if connected
+  useEffect(() => {
+    if (walletConnected && apiCredentials?.apiKey === "vantage_vps") {
+      const poll = async () => {
+        try {
+          const res = await fetch('/api/account/positions');
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            setMt5Positions(data);
+          }
+          
+          const accRes = await fetch('/api/account');
+          const accData = await accRes.json();
+          if (accData && !accData.error) {
+            setMt5AccountInfo(accData);
+            setBalance(accData.balance || accData.equity || 0);
+          }
+        } catch (e) {
+          console.error("Vantage Poll Error:", e);
+        }
+      };
+      
+      poll();
+      const interval = setInterval(poll, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [walletConnected, apiCredentials]);
 
   // Real-time states
   const [tickers, setTickers] = useState<
@@ -563,45 +594,29 @@ export default function App() {
                      Connect Binance
                    </button>
                  </div>
-                 <div className="mt-2 text-[10px] text-gray-500 flex items-start gap-1">
-                   <Info size={12} className="shrink-0 mt-0.5" />
-                   <p>Your keys are sent securely to the backend for verification. Enable "Spot Trading" and disable "Withdrawals".</p>
+                 <div className="mt-4 p-3 bg-black/40 rounded-lg border border-white/5 flex items-start gap-2">
+                   <Info size={14} className="text-blue-400 shrink-0 mt-0.5" />
+                   <p className="text-[10px] text-gray-500 leading-relaxed">
+                     This utilizes the MT5 REST API bridge on your VPS to securely mirror <b>Balance</b>, <b>Equity</b>, and <b>Live Positions</b>.
+                   </p>
                  </div>
               </div>
             ) : importMethod === "vantage" ? (
-              <div className="flex flex-col gap-3">
-                 <p className="text-xs text-blue-300 font-mono">Enter your Vantage Markets API credentials to connect your account.</p>
-                 
-                 <div className="relative">
-                   <input 
-                     type="text"
-                     className={cn(
-                       "w-full bg-black/50 border rounded p-2 text-white font-mono text-xs focus:outline-none transition-colors border-border-dim focus:border-blue-500"
-                     )}
-                     placeholder="Vantage Account ID (e.g., 1234567)"
-                   />
+              <div className="flex flex-col gap-3 p-2">
+                 <div className="text-center space-y-1 mb-4">
+                    <p className="text-[10px] text-blue-400 font-mono uppercase tracking-[0.2em]">MetaTrader 5 Sync</p>
+                    <h3 className="text-sm font-bold text-white">Vantage VPS Integration</h3>
                  </div>
                  
-                 <div className="relative">
-                   <input 
-                     type="text"
-                     className={cn(
-                       "w-full bg-black/50 border rounded p-2 text-white font-mono text-xs focus:outline-none transition-colors border-border-dim focus:border-blue-500"
-                     )}
-                     placeholder="Vantage Server (e.g., VantageFX-Live 1)"
-                     value={vantageServer}
-                     onChange={(e) => setVantageServer(e.target.value)}
-                   />
-                 </div>
-
-                 <div className="relative">
-                   <input 
-                     type="text"
-                     className={cn(
-                       "w-full bg-black/50 border rounded p-2 text-white font-mono text-xs focus:outline-none transition-colors border-border-dim focus:border-blue-500"
-                     )}
-                     placeholder="Vantage API Token / Key"
-                   />
+                 <div className="p-4 bg-blue-600/10 border border-blue-500/20 rounded-xl text-center space-y-3">
+                    <div className="relative inline-block">
+                       <Zap size={32} className="text-blue-500 animate-pulse relative z-10" />
+                       <div className="absolute inset-0 bg-blue-500 blur-xl opacity-20 animate-pulse" />
+                    </div>
+                    <div className="space-y-1">
+                       <p className="text-[10px] text-gray-400 font-mono">Syncing with dedicated terminal at:</p>
+                       <p className="text-[11px] text-blue-400 font-bold font-mono">69.169.97.10:8000</p>
+                    </div>
                  </div>
 
                  <div className="flex gap-2 mt-2">
@@ -613,49 +628,32 @@ export default function App() {
                    </button>
                    <button 
                      onClick={async () => {
-                        if (!apiKeyInput || !apiSecretInput) {
-                           setWalletError("Account ID and Token are required.");
-                           return;
-                        }
-                        setWalletStatusMessage("Connecting to Vantage VPS...");
-                        setImportMethod(null);
+                        setWalletStatusMessage("Syncing Vantage MT5...");
                         setIsConnectingWallet(true);
                         try {
-                          const res = await fetch('/api/account', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              apiKey: apiKeyInput.trim(),
-                              secretKey: apiSecretInput.trim(),
-                              server: vantageServer.trim(),
-                              type: 'vantage'
-                            })
-                          });
+                          const res = await fetch('/api/account');
                           const data = await res.json();
-                          if (data.success) {
-                            setWalletAddress("VANTAGE_" + apiKeyInput.trim().substring(0, 4));
-                            setBalance(data.balance);
+                          if (data && !data.error) {
+                            setWalletAddress(data.name || "VANTAGE_LIVE");
+                            setBalance(data.balance || data.equity || 0);
                             setApiCredentials({ 
-                               apiKey: apiKeyInput.trim(), 
-                               apiSecret: apiSecretInput.trim(),
-                               server: vantageServer.trim()
+                               apiKey: "vantage_vps", 
+                               apiSecret: "vps_active"
                             });
                             setWalletConnected(true);
                             setShowWalletModal(false);
                           } else {
-                            setWalletError(data.error || "Failed to verify Vantage credentials");
-                            setImportMethod("vantage");
+                            setWalletError(data.error || "Failed to sync VPS data");
                           }
                         } catch (err: any) {
-                          setWalletError("Connection error: " + err.message);
-                          setImportMethod("vantage");
+                          setWalletError("VPS Connection error: " + err.message);
                         }
                         setIsConnectingWallet(false);
                      }}
-                     className="flex-[2] py-2 bg-blue-500 text-black hover:bg-blue-400 rounded transition-all font-bold text-xs flex justify-center items-center gap-2"
+                     className="flex-[2] py-2.5 bg-blue-600 text-white hover:bg-blue-500 rounded-lg transition-all font-bold text-xs flex justify-center items-center gap-2 shadow-lg shadow-blue-600/20"
                    >
-                     <Wallet size={14} className="shrink-0" />
-                     Connect Vantage
+                     <Zap size={14} className="shrink-0" />
+                     Sync Account Live
                    </button>
                  </div>
                  <div className="mt-2 text-[10px] text-gray-500 flex items-start gap-1">
@@ -687,6 +685,22 @@ export default function App() {
                     </div>
                   </div>
                   <ChevronRight size={16} className="text-gray-600 group-hover:text-blue-400" />
+                </button>
+
+                <button 
+                  onClick={connectRealWallet}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-bg-primary border border-border-dim/50 hover:border-brand-emerald/50 hover:bg-brand-emerald/5 rounded transition-all group group-hover:shadow-[0_0_15px_rgba(16,185,129,0.1)]"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-brand-emerald/10 flex items-center justify-center">
+                      <Zap size={16} className="text-brand-emerald group-hover:text-brand-emerald transition-colors" />
+                    </div>
+                    <div className="text-left">
+                      <div className="font-bold text-sm group-hover:text-brand-emerald transition-colors">Web3 Wallet (MetaMask)</div>
+                      <div className="text-[10px] text-gray-500 font-mono">Connect browser wallet via Ethers</div>
+                    </div>
+                  </div>
+                  <ChevronRight size={16} className="text-gray-600 group-hover:text-brand-emerald" />
                 </button>
 
                 <div className="relative flex py-2 items-center">
@@ -800,14 +814,14 @@ export default function App() {
               className={cn(
                 "ml-2 px-3 py-1.5 flex items-center gap-2 rounded border font-bold transition-all whitespace-nowrap",
                 walletConnected
-                  ? "bg-bg-secondary border-brand-cyan text-brand-cyan shadow-[0_0_10px_rgba(0,229,255,0.2)]"
-                  : "bg-brand-cyan text-black border-brand-cyan hover:bg-brand-cyan/80",
+                  ? "bg-bg-secondary border-brand-cyan text-brand-cyan shadow-[0_0_15px_rgba(0,229,255,0.2)]"
+                  : "bg-brand-cyan text-black border-brand-cyan hover:bg-white shadow-[0_0_20px_rgba(0,229,255,0.4)] animate-pulse hover:animate-none",
               )}
             >
-              <Wallet size={12} />
+              <Wallet size={12} className={cn(!walletConnected && "animate-bounce")} />
               {walletConnected
-                ? `API: ${walletAddress} | $${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                : "CONNECT API"}
+                ? `ACTIVE: ${walletAddress} | $${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : "CONNECT WALLET / API"}
             </button>
             {walletConnected && (
               <button
@@ -942,7 +956,20 @@ export default function App() {
         <TickerBar data={tickers} />
 
         {/* Metrics Row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+          <div className="glass-panel p-4 border-l-2 border-brand-cyan">
+            <div className="text-[10px] text-gray-500 font-bold tracking-widest mb-1 flex items-center justify-between">
+              QUANTUM EQUITY
+              <div className={cn("w-1.5 h-1.5 rounded-full", walletConnected ? "bg-brand-emerald animate-pulse" : "bg-gray-600")} />
+            </div>
+            <div className="text-xl font-mono font-bold text-brand-cyan leading-none">
+              ${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <div className="mt-1 text-[8px] text-gray-600 font-mono flex justify-between">
+               <span>{walletConnected ? "LIVE SYNC ACTIVE" : "SIMULATED BAL"}</span>
+               <span>{walletAddress && walletAddress !== "DEMO" ? walletAddress : ""}</span>
+            </div>
+          </div>
           <div className="glass-panel p-4">
             <div className="text-[10px] text-gray-500 font-bold tracking-widest mb-1">
               LAST PRICE
@@ -1213,11 +1240,90 @@ export default function App() {
             />
           </div>
 
-          <div className="glass-panel h-[400px] flex flex-col">
-            <NewsWidget
-              symbol={symbol}
-              onSentimentAnalyzed={setGlobalSentiment}
-            />
+          <div className="glass-panel flex flex-col h-[400px] overflow-hidden border-blue-500/20">
+            {walletConnected && apiCredentials?.apiKey === "vantage_vps" ? (
+              <div className="flex flex-col h-full">
+                <div className="px-4 py-3 border-b border-blue-500/20 bg-blue-500/5 flex justify-between items-center">
+                  <span className="text-[10px] font-bold text-blue-400 font-mono tracking-widest uppercase flex items-center gap-2">
+                    <Activity size={12} />
+                    Live MT5 Account
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-brand-emerald animate-pulse" />
+                    <span className="text-[9px] text-brand-emerald font-mono uppercase">Live Data</span>
+                  </div>
+                </div>
+                
+                <div className="p-4 grid grid-cols-2 gap-3 border-b border-white/5 bg-black/20">
+                  <div className="space-y-0.5">
+                    <p className="text-[9px] text-gray-500 font-mono uppercase">Equity</p>
+                    <p className="text-sm font-bold text-white font-mono transition-all">
+                      ${(mt5AccountInfo?.equity || balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div className="space-y-0.5 text-right">
+                    <p className="text-[9px] text-gray-500 font-mono uppercase">Unrealized P/L</p>
+                    <p className={cn(
+                      "text-sm font-bold font-mono transition-all",
+                      (mt5AccountInfo?.profit || 0) >= 0 ? "text-brand-emerald" : "text-brand-red"
+                    )}>
+                      {(mt5AccountInfo?.profit || 0) >= 0 ? "+" : ""}{(mt5AccountInfo?.profit || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                  <table className="w-full text-left text-[10px] font-mono border-collapse">
+                    <thead className="sticky top-0 bg-[#0f1115] text-gray-600 uppercase border-b border-white/5">
+                      <tr>
+                        <th className="px-3 py-1.5 font-medium">Ticket</th>
+                        <th className="px-1 py-1.5 font-medium text-center">Type</th>
+                        <th className="px-3 py-1.5 font-medium text-right">Profit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mt5Positions.length > 0 ? (
+                        mt5Positions.map((pos: any, idx: number) => (
+                          <tr key={pos.ticket || idx} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors group">
+                            <td className="px-3 py-2">
+                              <div className="flex flex-col">
+                                <span className="text-white font-bold group-hover:text-blue-400 transition-colors">{pos.symbol}</span>
+                                <span className="text-[8px] text-gray-500">#{pos.ticket || pos.id} @ {pos.openPrice || pos.price}</span>
+                              </div>
+                            </td>
+                            <td className="px-1 py-2 text-center">
+                              <span className={cn(
+                                "px-1.5 py-0.5 rounded-[2px] font-bold text-[8px]",
+                                pos.type === "Buy" || pos.type === 0 ? "bg-brand-emerald text-black" : "bg-brand-red text-black"
+                              )}>
+                                {pos.type === "Buy" || pos.type === 0 ? "BUY" : "SELL"}
+                              </span>
+                            </td>
+                            <td className={cn(
+                              "px-3 py-2 text-right font-bold",
+                              (pos.profit || 0) >= 0 ? "text-brand-emerald" : "text-brand-red"
+                            )}>
+                              {(pos.profit || 0).toFixed(2)}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={3} className="px-3 py-8 text-center text-gray-600 italic opacity-40">
+                            No open positions found on terminal
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <NewsWidget
+                symbol={symbol}
+                onSentimentAnalyzed={setGlobalSentiment}
+              />
+            )}
           </div>
         </div>
 

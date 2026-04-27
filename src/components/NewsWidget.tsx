@@ -88,7 +88,20 @@ export function NewsWidget({
         )}
       </div>
 
-      {sentiment && !loading && (
+      {analyzing ? (
+        <div className="p-3 bg-bg-secondary/20 border-b border-border-dim/30 animate-pulse">
+          <div className="flex items-center justify-between mb-2">
+            <div className="h-3 w-24 bg-gray-800 rounded" />
+            <div className="h-3 w-12 bg-gray-800 rounded" />
+          </div>
+          <div className="h-2 w-full bg-gray-800 rounded mb-1" />
+          <div className="h-2 w-3/4 bg-gray-800 rounded mb-2" />
+          <div className="flex gap-1">
+            <div className="h-2.5 w-8 bg-gray-800 rounded" />
+            <div className="h-2.5 w-8 bg-gray-800 rounded" />
+          </div>
+        </div>
+      ) : sentiment && (
         <div className="p-3 bg-bg-secondary/20 border-b border-border-dim/30 animate-in fade-in slide-in-from-top-1 duration-500">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
@@ -118,8 +131,20 @@ export function NewsWidget({
       
       <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
         {loading ? (
-          <div className="flex items-center justify-center p-10 h-full">
-            <Loader2 className="animate-spin text-gray-600" size={20} />
+          <div className="flex flex-col gap-2">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="p-2 flex gap-3 animate-pulse opacity-50">
+                <div className="w-12 h-12 shrink-0 rounded bg-gray-800" />
+                <div className="flex flex-col justify-between flex-1">
+                  <div className="h-2.5 bg-gray-800 rounded w-full mb-2" />
+                  <div className="h-2 bg-gray-800 rounded w-2/3 mb-2" />
+                  <div className="flex justify-between">
+                    <div className="h-2 w-10 bg-gray-800 rounded" />
+                    <div className="h-2 w-10 bg-gray-800 rounded" />
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         ) : news.length > 0 ? (
           <div className="flex flex-col gap-1">

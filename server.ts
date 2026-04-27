@@ -8,8 +8,8 @@ import path from 'path';
 import crypto from 'crypto';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import tradeRoute from './routes/trade.ts';
-import accountRoute from './routes/account.ts';
+import tradeRoute from './routes/trade';
+import accountRoute from './routes/account';
 
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
@@ -220,7 +220,7 @@ async function startServer() {
       const { prompt, schema } = req.body;
       
       // Use direct REST API to bypass any SDK parsing/version issues
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
       const payload = {
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {

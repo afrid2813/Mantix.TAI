@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { executeTrade } from '../services/executionEngine';
-import fetch from 'node-fetch';
+import axios from 'axios';
 
 const router = Router();
 
@@ -18,27 +18,26 @@ router.post('/', async (req, res) => {
   if (type === 'vantage') {
     const vpsUrl = process.env.VPS_API_URL || 'http://69.169.97.10:8000';
     try {
-      const response = await fetch(`${vpsUrl}/trade`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          account_id: apiKey,
-          token: secretKey,
-          server: req.body.server,
-          symbol,
-          action: side.toLowerCase(),
-          volume: quantity,
-        }),
+      const response = await axios.post(`${vpsUrl}/trade`, {
+        account_id: apiKey,
+        token: secretKey,
+        server: req.body.server,
+        symbol,
+        action: side.toLowerCase(),
+        volume: quantity,
       });
 
-      const data = await response.json();
-      if (response.ok) {
-        return res.json({ success: true, data });
+      if (response.status === 200) {
+        return res.json({ success: true, data: response.data });
       } else {
-        return res.status(response.status).json({ success: false, error: data.message || 'VPS Trade failed' });
+        return res.status(response.status).json({ success: false, error: response.data.message || 'VPS Trade failed' });
       }
     } catch (err: any) {
-      return res.status(500).json({ success: false, error: `VPS Connection failed: ${err.message}` });
+      const errorData = err.response?.data;
+      return res.status(err.response?.status || 500).json({ 
+        success: false, 
+        error: errorData?.message || `VPS Connection failed: ${err.message}` 
+      });
     }
   }
 

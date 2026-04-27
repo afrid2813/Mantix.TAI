@@ -142,7 +142,28 @@ export function AIPredictionWidget({
         </div>
       </div>
       <div className="flex-1 bg-bg-primary/50 border border-border-dim/50 rounded p-4 z-10 overflow-y-auto custom-scrollbar">
-        {error ? (
+        {loading ? (
+          <div className="flex flex-col h-full animate-pulse">
+            <div className="flex items-center justify-between mb-4">
+              <div className="h-3 w-32 bg-gray-800 rounded" />
+              <div className="flex items-center gap-2">
+                <div className="h-6 w-20 bg-gray-800 rounded" />
+                <div className="h-10 w-10 bg-gray-800 rounded-full" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="h-2.5 w-full bg-gray-900 rounded" />
+              <div className="h-2.5 w-full bg-gray-900 rounded" />
+              <div className="h-2.5 w-4/5 bg-gray-900 rounded" />
+              <div className="h-2.5 w-full bg-gray-900 rounded" />
+              <div className="h-2.5 w-2/3 bg-gray-900 rounded" />
+            </div>
+            <div className="mt-6 flex flex-col items-center gap-2">
+               <Loader2 size={24} className="animate-spin text-brand-emerald opacity-20" />
+               <span className="text-[8px] text-gray-700 font-mono tracking-[.3em] uppercase">Processing Quantum Data</span>
+            </div>
+          </div>
+        ) : error ? (
           <div className="text-brand-red text-[11px] font-mono flex flex-col items-center justify-center h-full text-center p-4 border border-brand-red/20 rounded bg-brand-red/5">
             <Bot size={24} className="mb-2 opacity-50" />
             <span className="font-bold tracking-widest uppercase mb-1">Analysis Failed</span>
@@ -189,9 +210,9 @@ export function AIPredictionWidget({
           </div>
         ) : (
           <div className="text-gray-600 text-[11px] font-mono flex flex-col items-center justify-center h-full text-center opacity-80">
-            {loading ? <Loader2 size={28} className="mb-3 opacity-50 animate-spin text-brand-emerald" /> : <Bot size={28} className="mb-3 opacity-20" />}
+            <Bot size={28} className="mb-3 opacity-20" />
             <p className="uppercase tracking-widest leading-loose">
-              {!indicators ? 'Fetching Engine Data...' : loading ? 'Analyzing Market Context...' : 'Running Initial AI Analysis...'}
+              {!indicators ? 'Fetching Engine Data...' : 'Waiting for Model Response...'}
             </p>
           </div>
         )}
