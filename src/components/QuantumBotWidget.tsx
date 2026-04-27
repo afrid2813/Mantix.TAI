@@ -53,10 +53,9 @@ export function QuantumBotWidget({
   onTradeClose,
 }: QuantumBotProps) {
   const [active, setActive] = useState(false);
-  const [isLive, setIsLive] = useState(false);
-  const [positions, setPositions] = useState<Position[]>([]);
-  const [mt5Balance, setMt5Balance] = useState<number | null>(null);
-  const [mt5Positions, setMt5Positions] = useState<any[]>([]);
+  const [isLive, setIsLive] = useState(true);
+  const [mtBalance, setMtBalance] = useState(0);
+  const [positions, setPositions] = useState<any[]>([]);
   const [tradeCount, setTradeCount] = useState(0);
   const [speedMs, setSpeedMs] = useState(500); // MS execution speed
   const [takeProfitPct, setTakeProfitPct] = useState(85); // 85% expected return based on user requirements
@@ -91,8 +90,8 @@ export function QuantumBotWidget({
 
   const currentPriceRef = useRef(currentPrice);
   currentPriceRef.current = currentPrice;
-  const balanceRef = useRef(balance);
-  balanceRef.current = balance;
+  const balanceRef = useRef(mtBalance);
+  balanceRef.current = mtBalance;
   const aiSignalRef = useRef(aiSignal);
   aiSignalRef.current = aiSignal;
   const confidenceThresholdRef = useRef(confidenceThreshold);
@@ -102,58 +101,72 @@ export function QuantumBotWidget({
   const technicalSignalRef = useRef(technicalSignal);
   technicalSignalRef.current = technicalSignal;
 
-  // Poll MT5 Account Data (Balance & Equity)
+  // VPS MT5 Integration - Account Balance
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    
-    const fetchMt5Data = async () => {
+    const fetchBalance = async () => {
       try {
-        const response = await fetch('/api/account');
-        const data = await response.json();
-        
-        // Use data.balance as the primary trading balance source
+        const res = await fetch('/api/vps/account');
+        if (!res.ok) {
+           console.warn("VPS Balance probe failed with status:", res.status);
+           return;
+        }
+        const data = await res.json();
         if (data && data.balance !== undefined) {
-          const newBalance = Number(data.balance);
-          setMt5Balance(newBalance);
-          // Sync global balance if available
-          if (typeof setBalance === 'function') {
-            setBalance(newBalance);
-          }
+          setMtBalance(data.balance);
         }
       } catch (err) {
-        console.error("Failed to fetch MT5 account data:", err);
+        // Log errors but don't break the component
+        console.error("VPS Balance Sync Error:", err);
       }
     };
-
-    const fetchMt5Positions = async () => {
-      try {
-        const response = await fetch('/api/account/positions');
-        const data = await response.json();
-        if (Array.isArray(data)) {
-          setMt5Positions(data);
-        }
-      } catch (err) {
-        console.error("Failed to fetch MT5 positions:", err);
-      }
-    };
-
-    fetchMt5Data();
-    fetchMt5Positions();
-    
-    interval = setInterval(() => {
-      fetchMt5Data();
-      fetchMt5Positions();
-    }, 5000);
-
+    fetchBalance();
+    const interval = setInterval(fetchBalance, 8000); // Relaxed frequency to avoid socket hangups on slow terminals
     return () => clearInterval(interval);
-  }, [isLive, setBalance]);
+  }, []);
 
+  // VPS MT5 Integration - Open Positions
   useEffect(() => {
-    if (walletConnected && importMethod === 'vantage' && !isLive) {
-      // Promptly suggest live execution for synchronized accounts, but don't force for safety
-      // setIsLive(true); 
+    const fetchPositions = async () => {
+      try {
+        const res = await fetch('/api/vps/positions');
+        if (!res.ok) {
+          console.warn("VPS Positions probe failed with status:", res.status);
+          return;
+        }
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setPositions(data);
+        } else if (data && Array.isArray(data.positions)) {
+           setPositions(data.positions);
+        }
+      } catch (err) {
+        console.error("VPS Positions Sync Error:", err);
+      }
+    };
+    fetchPositions();
+    const interval = setInterval(fetchPositions, 8000); // Relaxed frequency
+    return () => clearInterval(interval);
+  }, []);
+
+  const executeTrade = async (action: string) => {
+    try {
+      setExecutionError(null);
+      const res = await fetch(
+        `/api/vps/trade?action=${action.toLowerCase()}&lot=0.01`,
+        { method: 'POST' }
+      );
+      const data = await res.json();
+      if (data.status === "success" || data.success) {
+        console.log(`VPS ${action} executed successfully`);
+        setTradeCount(c => c + 1);
+      } else {
+        setExecutionError(data.error || "VPS execution error");
+      }
+    } catch (err) {
+      console.error("VPS Execution Error:", err);
+      setExecutionError("VPS Connection Error");
     }
-  }, [walletConnected, importMethod]);
+  };
 
   // Simulate hash rate / quantum speed calculations when active
   useEffect(() => {
@@ -167,33 +180,9 @@ export function QuantumBotWidget({
     return () => clearInterval(interval);
   }, [active]);
 
-  // Update existing positions PnL
+  // Update existing positions PnL (Deactivated for VPS)
   useEffect(() => {
-    setPositions((prev) =>
-      prev.map((p) => {
-        // Enforce 85-90% win rate by using the Trade ID as a deterministic seed
-        const isWinner = parseInt(p.id.substring(0, 8), 36) % 100 < 88; // 88% win rate
-        const timeActiveMs = Math.max(100, new Date().getTime() - p.time.getTime());
-        
-        // Rapid fire simulation to achieve the 80%+ return quickly
-        // The longer it's open, the closer it pushes to the TP target (if winner) or SL (if loser)
-        const targetReturnPct = isWinner ? 85 : -15; 
-        
-        // Progress interpolates to target over ~3-5 seconds
-        const progress = Math.min(1, timeActiveMs / 4000); 
-        
-        // Add some jitter
-        const jitter = (Math.random() - 0.5) * 5; 
-        
-        let returnPct = (targetReturnPct * progress) + jitter;
-
-        // Ensure we don't go far below -15%
-        if (returnPct < -15) returnPct = -15;
-        
-        const pnl = p.size * (returnPct / 100);
-        return { ...p, pnl };
-      }),
-    );
+    // mtBalance and positions are handled by external polling
   }, [currentPrice]);
 
   // High Frequency Trading Logic
@@ -207,44 +196,12 @@ export function QuantumBotWidget({
       setPositions((currentPositions) => {
         let newPositions = [...currentPositions];
 
-        // Auto Close logic: close positions based on TP/SL settings or time
+        // Auto Close logic: (Deactivated for VPS)
+        /*
         newPositions = newPositions.filter((p) => {
-          const isStale =
-            new Date().getTime() - p.time.getTime() >
-            Math.max(speedMs * 10, 4000);
-          if (
-            p.pnl > p.size * (takeProfitPct / 100) ||
-            p.pnl < -p.size * (stopLossPct / 100) ||
-            isStale
-          ) {
-            // Realize PnL & Side effects using setTimeout to move out of reducer
-            setTimeout(() => {
-              // Only simulate balance movement if NOT in live mode (Live mode syncs via polling)
-              if (!isLive) {
-                setBalance((b) => b + p.pnl);
-              }
-              setTotalRealizedReturns((r) => r + p.pnl);
-              setClosedTrades((c) => c + 1);
-              if (p.pnl > 0) {
-                 setWinningTrades((w) => w + 1);
-              }
-
-              if (onTradeClose) {
-                onTradeClose({
-                  id: p.id,
-                  symbol: p.symbol,
-                  type: p.type,
-                  entryPrice: p.entryPrice,
-                  exitPrice: currentPriceRef.current,
-                  pnl: p.pnl,
-                  time: new Date(),
-                });
-              }
-            }, 0);
-            return false;
-          }
-          return true;
+          ...
         });
+        */
 
         // Advanced Quantum Execution Engine Logic
         if (newPositions.length < maxPositions) {
@@ -344,7 +301,7 @@ export function QuantumBotWidget({
 
           // Define execution parameters
           let tradeQuantity = 0;
-          const currentBalance = mt5Balance !== null ? mt5Balance : balance;
+          const currentBalance = mtBalance;
           
           if (isLive) {
             // Use user-defined lot size for MT5
@@ -385,48 +342,7 @@ export function QuantumBotWidget({
 
           // Execute only if action is BUY or SELL
           if (executionSignal.action !== "HOLD") {
-            const type = executionSignal.action === "BUY" ? "LONG" : "SHORT";
-            
-            if (isLive) {
-                setExecutionError(null);
-                fetch('/api/trade', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    side: executionSignal.action,
-                    quantity: fixedLotSizeRef.current, // Use MT5 Lot Size
-                    type: 'vantage'
-                  })
-                }).then(r => r.json()).then(data => {
-                  if (data.success) {
-                    console.log("MT5 Order Executed:", data.data);
-                    setTradeCount(c => c + 1);
-                  } else {
-                    setExecutionError(data.error || "VPS Trade rejected by terminal");
-                  }
-                }).catch(err => {
-                  console.error("Live VPS Order Error:", err);
-                  setExecutionError("Terminal connection lost. Trade failed.");
-                });
-            } else {
-              newPositions.push({
-                id: Math.random().toString(36).substring(2, 10) + Date.now().toString(36),
-                symbol,
-                type,
-                entryPrice: executionSignal.entry_price,
-                size: executionSignal.position_size,
-                pnl: 0,
-                time: new Date(),
-                meta: executionSignal
-              });
-            }
-            setTimeout(() => {
-              setTotalInvestment((inv) => inv + executionSignal.position_size);
-            }, 0);
-            setTradeCount((c) => c + 1);
-            
-            // Console log the execution JSON for transparent verification
-            console.log(JSON.stringify(executionSignal, null, 2));
+            executeTrade(executionSignal.action);
           }
         }
 
@@ -464,21 +380,9 @@ export function QuantumBotWidget({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <span className={cn("text-[9px] font-mono", isLive ? "text-brand-red font-bold" : "text-gray-500")}>
-            LIVE MODE
+          <span className="text-[9px] font-mono text-brand-red font-bold animate-pulse">
+            LIVE MT5
           </span>
-          <button 
-            onClick={() => setIsLive(!isLive)}
-            className={cn(
-              "w-8 h-4 rounded-full relative transition-all",
-              isLive ? "bg-brand-red" : "bg-gray-800"
-            )}
-          >
-            <div className={cn(
-              "absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all",
-              isLive ? "right-0.5" : "left-0.5"
-            )} />
-          </button>
         </div>
       </div>
 
@@ -493,34 +397,27 @@ export function QuantumBotWidget({
         )}
 
         {/* Connection Info */}
-        {walletConnected && (
-          <div className={cn(
-            "flex items-center justify-between px-3 py-2 rounded text-[9px] font-mono transition-colors",
-            isLive ? "bg-brand-red/10 border border-brand-red/30 animate-in fade-in" : "bg-brand-cyan/5 border border-brand-cyan/20"
-          )}>
-            <div className="flex items-center gap-2">
-              <div className={cn("w-1.5 h-1.5 rounded-full animate-pulse", isLive ? "bg-brand-red" : "bg-brand-cyan")} />
-              <span className="text-gray-400 uppercase">WALLET READY:</span>
-              <span className={cn("font-bold truncate max-w-[100px]", isLive ? "text-brand-red" : "text-brand-cyan")}>
-                {importMethod === 'vantage' ? 'VANTAGE MT5' : 'ETH WALLET'}
-              </span>
-            </div>
-            <div className="text-white font-bold">
-              ${(isLive && mt5Balance !== null ? mt5Balance : balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
+        <div className={cn(
+          "flex items-center justify-between px-3 py-2 rounded text-[9px] font-mono transition-colors",
+          "bg-brand-cyan/5 border border-brand-cyan/20"
+        )}>
+          <div className="flex items-center gap-2">
+            <div className="w-1.5 h-1.5 rounded-full animate-pulse bg-brand-cyan" />
+            <span className="text-gray-400 uppercase">WALLET READY:</span>
+            <span className="font-bold truncate text-brand-cyan uppercase">VANTAGE MT5</span>
           </div>
-        )}
+          <div className="text-white font-bold">
+            ${mtBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+        </div>
 
         {/* Controls */}
         <div className="flex flex-col gap-3 mb-1">
           <button
             onClick={() => setActive(!active)}
-            disabled={!walletConnected}
             className={cn(
               "flex-1 flex justify-center items-center gap-2 py-3 rounded-md border font-mono font-bold text-xs uppercase tracking-widest transition-all",
-              !walletConnected
-                ? "border-gray-800 text-gray-600 bg-gray-900 cursor-not-allowed"
-                : active
+              active
                   ? "border-[#FF0055] text-[#FF0055] bg-[#FF0055]/10 hover:bg-[#FF0055]/20 shadow-[0_0_15px_rgba(255,0,85,0.3)]"
                   : "border-[#00FFFF] text-[#00FFFF] bg-[#00FFFF]/10 hover:bg-[#00FFFF]/20 shadow-[0_0_15px_rgba(0,255,255,0.3)]",
             )}
@@ -545,17 +442,12 @@ export function QuantumBotWidget({
               max="2000"
               step="10"
               value={speedMs}
-              onChange={(e) => setSpeedMs(Number(e.target.value))}
-              disabled={!walletConnected}
-              className={cn(
-                "w-full h-1 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-[#00FFFF]",
-                !walletConnected && "opacity-50 cursor-not-allowed",
-              )}
-            />
+            onChange={(e) => setSpeedMs(Number(e.target.value))}
+            className="w-full h-1 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-[#00FFFF]"
+          />
 
-            {/* Risk Controls */}
-            {walletConnected && (
-              <div className="flex flex-col gap-3 mt-2 pt-2 border-t border-white/5">
+          {/* Risk Controls */}
+          <div className="flex flex-col gap-3 mt-2 pt-2 border-t border-white/5">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="flex flex-col gap-1.5">
                     <div className="flex justify-between items-center text-[8px] font-mono text-gray-500 uppercase">
@@ -690,22 +582,15 @@ export function QuantumBotWidget({
                   </div>
                 </div>
               </div>
-            )}
 
-            <div className="flex justify-between text-[8px] text-gray-600 font-mono mt-1 hidden">
-              <span>10ms (Quantum)</span>
-              <span>2000ms (Slow)</span>
+              <div className="flex justify-between text-[8px] text-gray-600 font-mono mt-1 hidden">
+                <span>10ms (Quantum)</span>
+                <span>2000ms (Slow)</span>
+              </div>
             </div>
           </div>
-        </div>
 
-        {!walletConnected && (
-          <div className="text-[10px] text-gray-500 font-mono text-center flex items-center justify-center gap-2 border border-dashed border-gray-800 p-2 rounded">
-            <Lock size={10} /> Connect Web3 Wallet to enable
-          </div>
-        )}
-
-        {/* Engine Stats */}
+        {/* Stats */}
         <div className="grid grid-cols-3 gap-3 mb-2">
           {/* History / Performance Stats */}
           <div className="col-span-3 bg-black/50 border border-brand-cyan/20 rounded p-3 grid grid-cols-3 gap-2 divide-x divide-white/10">
@@ -832,23 +717,23 @@ export function QuantumBotWidget({
         {/* Live Positions List */}
         <div className="flex flex-col flex-1 min-h-[140px]">
           <div className="text-[9px] text-gray-500 font-mono uppercase tracking-widest border-b border-border-dim pb-1 mb-2 flex justify-between">
-            <span>{isLive ? 'Live MT5 Positions' : 'Active Simulated Positions'} ({isLive ? mt5Positions.length : positions.length}/{maxPositions})</span>
-            {isLive && mt5Balance && <span className="text-brand-cyan">Equity: ${mt5Balance.toFixed(2)}</span>}
+            <span>MT5 Live Positions ({positions.length}/{maxPositions})</span>
+            {mtBalance !== 0 && <span className="text-brand-cyan">Equity: ${mtBalance.toFixed(2)}</span>}
           </div>
-          {(isLive ? mt5Positions : positions).length === 0 ? (
+          {positions.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center text-gray-600 opacity-50 space-y-2 pb-4">
               <Activity size={24} />
               <span className="text-[9px] font-mono">
-                {isLive ? 'CONNECTING TO VANTAGE VPS...' : 'STANDBY / NO ACTIVE POSITIONS'}
+                CONNECTING TO VANTAGE VPS...
               </span>
             </div>
           ) : (
             <div className="space-y-1.5 overflow-y-auto custom-scrollbar flex-1 pr-1">
-              {(isLive ? mt5Positions : positions).map((p: any) => {
-                const id = p.ticket || p.id;
+              {positions.map((p: any) => {
+                const id = p.ticket || p.id || Math.random();
                 const type = p.type === 0 || p.type === 'LONG' || p.type === 'buy' ? 'LONG' : 'SHORT';
                 const pnl = p.profit !== undefined ? p.profit : p.pnl;
-                const symbol_name = p.symbol || 'USD';
+                const symbol_name = p.symbol || 'PAIR';
                 const lot_size = p.volume !== undefined ? p.volume : p.size;
 
                 return (
@@ -866,7 +751,7 @@ export function QuantumBotWidget({
                         {type}
                       </span>
                       <span className="text-white text-[10px] uppercase">{symbol_name}</span>
-                      <span className="text-[10px] text-gray-500 font-bold ml-1">{isLive ? lot_size + ' LOTS' : '$' + lot_size.toFixed(2)}</span>
+                      <span className="text-[10px] text-gray-500 font-bold ml-1">{lot_size} LOTS</span>
                     </div>
                     <div className="flex flex-col items-end">
                       <span
@@ -876,7 +761,7 @@ export function QuantumBotWidget({
                         )}
                       >
                         {pnl >= 0 ? "+" : ""}
-                        {(pnl || 0).toFixed(2)} {isLive ? 'USD' : 'USDT'}
+                        {(pnl || 0).toFixed(2)} USD
                       </span>
                     </div>
                   </div>

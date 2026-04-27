@@ -95,21 +95,22 @@ export default function App() {
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [apiSecretInput, setApiSecretInput] = useState("");
   const [apiCredentials, setApiCredentials] = useState<{apiKey: string, apiSecret: string, server?: string} | null>(null);
-  const [mt5Positions, setMt5Positions] = useState<any[]>([]);
+
   const [mt5AccountInfo, setMt5AccountInfo] = useState<any>(null);
+  const [mt5Positions, setMt5Positions] = useState<any[]>([]);
 
   // Poll Vantage positions if connected
   useEffect(() => {
     if (walletConnected && apiCredentials?.apiKey === "vantage_vps") {
       const poll = async () => {
         try {
-          const res = await fetch('/api/account/positions');
+          const res = await fetch('/api/vps/positions');
           const data = await res.json();
           if (Array.isArray(data)) {
             setMt5Positions(data);
           }
           
-          const accRes = await fetch('/api/account');
+          const accRes = await fetch('/api/vps/account');
           const accData = await accRes.json();
           if (accData && !accData.error) {
             setMt5AccountInfo(accData);
@@ -652,7 +653,7 @@ export default function App() {
                         setWalletStatusMessage("Syncing Vantage MT5...");
                         setIsConnectingWallet(true);
                         try {
-                          const res = await fetch('/api/account');
+                          const res = await fetch('/api/vps/account');
                           const data = await res.json();
                           if (data && !data.error) {
                             setWalletAddress(data.name || "VANTAGE_LIVE");
@@ -1304,38 +1305,11 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {mt5Positions.length > 0 ? (
-                        mt5Positions.map((pos: any, idx: number) => (
-                          <tr key={pos.ticket || idx} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors group">
-                            <td className="px-3 py-2">
-                              <div className="flex flex-col">
-                                <span className="text-white font-bold group-hover:text-blue-400 transition-colors">{pos.symbol}</span>
-                                <span className="text-[8px] text-gray-500">#{pos.ticket || pos.id} @ {pos.openPrice || pos.price}</span>
-                              </div>
-                            </td>
-                            <td className="px-1 py-2 text-center">
-                              <span className={cn(
-                                "px-1.5 py-0.5 rounded-[2px] font-bold text-[8px]",
-                                pos.type === "Buy" || pos.type === 0 ? "bg-brand-emerald text-black" : "bg-brand-red text-black"
-                              )}>
-                                {pos.type === "Buy" || pos.type === 0 ? "BUY" : "SELL"}
-                              </span>
-                            </td>
-                            <td className={cn(
-                              "px-3 py-2 text-right font-bold",
-                              (pos.profit || 0) >= 0 ? "text-brand-emerald" : "text-brand-red"
-                            )}>
-                              {(pos.profit || 0).toFixed(2)}
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan={3} className="px-3 py-8 text-center text-gray-600 italic opacity-40">
-                            No open positions found on terminal
-                          </td>
-                        </tr>
-                      )}
+                      <tr>
+                        <td colSpan={3} className="px-3 py-8 text-center text-gray-600 italic opacity-40">
+                          Execution engine active on MT5 terminal
+                        </td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>

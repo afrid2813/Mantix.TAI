@@ -302,6 +302,90 @@ Analysis: 2 sentences.`;
     });
   });
 
+  // --- VPS PROXIES ---
+  const VPS_URL = 'http://69.169.97.10:8000';
+
+  app.get('/api/vps/account', async (req, res) => {
+    try {
+      console.log('Fetching VPS Account...');
+      const response = await axios.get(`${VPS_URL}/account`, { 
+        timeout: 15000,
+        headers: { 'Accept': 'application/json' }
+      });
+      res.json(response.data);
+    } catch (err: any) {
+      console.error('VPS Account Error:', err.message);
+      const statusCode = err.response?.status || 500;
+      res.status(statusCode).json({ 
+        error: true,
+        message: `VPS Unreachable: ${err.message}`,
+        details: err.response?.data || 'No response data'
+      });
+    }
+  });
+
+  app.get('/api/vps/positions', async (req, res) => {
+    try {
+      console.log('Fetching VPS Positions...');
+      const response = await axios.get(`${VPS_URL}/positions`, { 
+        timeout: 15000,
+        headers: { 'Accept': 'application/json' }
+      });
+      res.json(response.data);
+    } catch (err: any) {
+      console.error('VPS Positions Error:', err.message);
+      const statusCode = err.response?.status || 500;
+      res.status(statusCode).json({ 
+        error: true,
+        message: `VPS Unreachable: ${err.message}`,
+        positions: [] 
+      });
+    }
+  });
+
+  app.post('/api/vps/trade', async (req, res) => {
+    try {
+      const action = req.query.action || req.body.action;
+      const lot = req.query.lot || req.body.lot || '0.01';
+      
+      console.log(`Executing VPS Trade: ${action} lot=${lot}`);
+      
+      const response = await axios({
+        method: 'post',
+        url: `${VPS_URL}/trade`,
+        params: { action, lot },
+        timeout: 20000,
+        headers: { 'Accept': 'application/json' }
+      });
+      
+      res.json({ success: true, data: response.data });
+    } catch (err: any) {
+      console.error('VPS Trade Error:', err.message);
+      res.status(err.response?.status || 500).json({ 
+        success: false, 
+        error: err.response?.data?.message || `VPS Execution failed: ${err.message}`
+      });
+    }
+  });
+
+  app.post('/api/vps/close', async (req, res) => {
+    try {
+      console.log('Executing VPS Close All...');
+      const response = await axios({
+        method: 'post',
+        url: `${VPS_URL}/close`,
+        timeout: 20000,
+        headers: { 'Accept': 'application/json' }
+      });
+      res.json(response.data);
+    } catch (err: any) {
+      console.error('VPS Close Error:', err.message);
+      res.status(err.response?.status || 500).json({ 
+        error: `VPS Close failed: ${err.message}` 
+      });
+    }
+  });
+
   app.use('/api/trade', tradeRoute);
   app.use('/api/account', accountRoute);
 

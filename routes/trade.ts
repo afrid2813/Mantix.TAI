@@ -5,6 +5,10 @@ import axios from 'axios';
 const router = Router();
 
 router.post('/', async (req, res) => {
+  // Support both body and query params for VPS integration
+  const queryAction = req.query.action as string;
+  const queryLot = req.query.lot as string;
+
   const {
     apiKey,
     secretKey,
@@ -12,14 +16,18 @@ router.post('/', async (req, res) => {
     side,
     quantity,
     balance,
-    type, // 'binance' or 'vantage'
+    type: bodyType,
   } = req.body;
+
+  const type = bodyType || (queryAction ? 'vantage' : null);
+  const effectiveSide = side || (queryAction ? queryAction.toUpperCase() : null);
+  const effectiveQuantity = quantity || (queryLot ? parseFloat(queryLot) : 0.01);
 
   if (type === 'vantage') {
     const vpsUrl = process.env.VPS_API_URL || 'http://69.169.97.10:8000';
     try {
-      const action = side === 'BUY' ? 'buy' : 'sell';
-      const lot = quantity || 0.01;
+      const action = effectiveSide === 'BUY' ? 'buy' : 'sell';
+      const lot = effectiveQuantity || 0.01;
       
       // Explicitly call POST with only query params and no body to avoid 422 errors
       const response = await axios({
