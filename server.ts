@@ -331,10 +331,14 @@ Analysis: 2 sentences.`;
     try {
       const action = req.query.action || req.body.action;
       const lot = req.query.lot || req.body.lot || '0.01';
-      const response = await fetch(
-        `${VPS_URL}/trade?action=${action}&lot=${lot}`,
-        { method: 'POST' }
-      );
+      const sl = req.query.sl || req.body.sl;
+      const tp = req.query.tp || req.body.tp;
+
+      let url = `${VPS_URL}/trade?action=${action}&lot=${lot}`;
+      if (sl) url += `&sl=${sl}`;
+      if (tp) url += `&tp=${tp}`;
+
+      const response = await fetch(url, { method: 'POST' });
       const data = await response.json();
       res.json(data);
     } catch (err: any) {

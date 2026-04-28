@@ -58,9 +58,9 @@ export function QuantumBotWidget({
   const [positions, setPositions] = useState<any[]>([]);
   const [tradeCount, setTradeCount] = useState(0);
   const [speedMs, setSpeedMs] = useState(500); // MS execution speed
-  const [takeProfitPct, setTakeProfitPct] = useState(85); // 85% expected return based on user requirements
-  const [stopLossPct, setStopLossPct] = useState(15); // 15% stop loss
-  const [riskPerTrade, setRiskPerTrade] = useState(2); // 2% of balance per trade
+  const [takeProfitPct, setTakeProfitPct] = useState(2.0); // 2% TP
+  const [stopLossPct, setStopLossPct] = useState(1.0); // 1% SL
+  const [riskPerTrade, setRiskPerTrade] = useState(1); // 1% risk
   const [minPositionSize, setMinPositionSize] = useState(10); // Minimum $10
   const [fixedLotSize, setFixedLotSize] = useState(0.01); // Default lot size for MT5
   const [confidenceThreshold, setConfidenceThreshold] = useState(2.0);
@@ -100,15 +100,23 @@ export function QuantumBotWidget({
   aiWeightRef.current = aiWeight;
   const technicalSignalRef = useRef(technicalSignal);
   technicalSignalRef.current = technicalSignal;
+  const takeProfitPctRef = useRef(takeProfitPct);
+  takeProfitPctRef.current = takeProfitPct;
+  const stopLossPctRef = useRef(stopLossPct);
+  stopLossPctRef.current = stopLossPct;
+  const positionsRef = useRef(positions);
+  positionsRef.current = positions;
 
   // VPS MT5 Integration - Account Balance
   useEffect(() => {
     const fetchAccount = async () => {
       try {
         const res = await fetch('/api/vps/account');
-        const data = await res.json();
-        if (data.balance !== undefined) {
-          setMtBalance(data.balance);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.balance !== undefined) {
+            setMtBalance(data.balance);
+          }
         }
       } catch (err) {
         console.error('Account fetch failed:', err);
@@ -141,19 +149,42 @@ export function QuantumBotWidget({
     return () => clearInterval(interval);
   }, []);
 
-  const executeTrade = async (action: string) => {
+  const executeTrade = async (action: string, sl?: number, tp?: number) => {
     try {
       setExecutionError(null);
-      const res = await fetch(
-        `/api/vps/trade?action=${action.toLowerCase()}&lot=${fixedLotSizeRef.current}`,
-        { method: 'POST' }
-      );
+      
+      let res;
+      if (importMethod === 'binance' && apiCredentials) {
+        // Binance execution path
+        res = await fetch('/api/trade', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            apiKey: apiCredentials.apiKey,
+            secretKey: apiCredentials.apiSecret,
+            symbol: symbol,
+            side: action.toUpperCase(),
+            quantity: fixedLotSizeRef.current, // Usually lot size for crypto is different but logic follows user choice
+            sl: sl?.toFixed(2),
+            tp: tp?.toFixed(2)
+          })
+        });
+      } else {
+        // VPS/Vantage execution path (default)
+        let url = `/api/vps/trade?action=${action.toLowerCase()}&lot=${fixedLotSizeRef.current}`;
+        if (sl) url += `&sl=${sl.toFixed(5)}`;
+        if (tp) url += `&tp=${tp.toFixed(5)}`;
+        res = await fetch(url, { method: 'POST' });
+      }
       
       const data = await res.json().catch(() => null);
       
       if (res.ok && data && (data.status === "success" || data.success)) {
         console.log(`VPS ${action} executed successfully`);
         setTradeCount(c => c + 1);
+        // Refresh positions instantly
+        const pr = await fetch('/api/vps/positions').then(r => r.json()).catch(() => null);
+        if (Array.isArray(pr)) setPositions(pr);
       } else {
         const errorMsg = data?.error || data?.message || `Execution Failed (Status: ${res.status})`;
         console.error("VPS Rejection:", errorMsg);
@@ -190,173 +221,125 @@ export function QuantumBotWidget({
       if (!activeRef.current) return;
       if (currentPriceRef.current === 0) return;
 
-      setPositions((currentPositions) => {
-        let newPositions = [...currentPositions];
+      // Advanced Quantum Execution Engine Logic
+      const currentPositions = positionsRef.current;
+      if (currentPositions.length < maxPositions) {
+        // 1. Data Collection
+        const signalRaw = (aiSignalRef.current || 'neutral').toLowerCase();
+        const techSignal = technicalSignalRef.current;
+        const currentPrice = currentPriceRef.current;
+        const currentBalance = balanceRef.current;
+        
+        // 2. Market State & Order Book Intelligence (Simulated)
+        const orderBookResistance = currentPrice * (1 + Math.random() * 0.002);
+        const orderBookSupport = currentPrice * (1 - Math.random() * 0.002);
+        const volatility = Math.random() * 0.005; // 0% to 0.5% simulated local volatility
+        
+        let action: "BUY" | "SELL" | "HOLD" = "HOLD";
+        let confidence = 0;
+        let reason = "Awaiting confluence";
+        
+        const aiMult = aiWeightRef.current / 50;
+        const techMult = (100 - aiWeightRef.current) / 50;
+        
+        let bullishConfluence = 0;
+        let bearishConfluence = 0;
 
-        // Auto Close logic: (Deactivated for VPS)
-        /*
-        newPositions = newPositions.filter((p) => {
-          ...
-        });
-        */
+        // AI Consensus (Boosted for sensitivity)
+        if (signalRaw.includes("strong bullish")) bullishConfluence += 20 * aiMult;
+        else if (signalRaw.includes("bullish")) bullishConfluence += 12 * aiMult;
+        else if (signalRaw.includes("strong bearish")) bearishConfluence += 20 * aiMult;
+        else if (signalRaw.includes("bearish")) bearishConfluence += 12 * aiMult;
 
-        // Advanced Quantum Execution Engine Logic
-        if (newPositions.length < maxPositions) {
-          // 1. Data Collection
-          const signalRaw = (aiSignalRef.current || 'neutral').toLowerCase();
-          const techSignal = technicalSignalRef.current;
-          const currentPrice = currentPriceRef.current;
-          const balance = balanceRef.current;
+        // Technical Confluence (Boosted for sensitivity)
+        if (techSignal) {
+          if (techSignal.trend === 'up') bullishConfluence += 6 * techMult;
+          if (techSignal.trend === 'down') bearishConfluence += 6 * techMult;
           
-          // 2. Market State & Order Book Intelligence (Simulated)
-          const orderBookResistance = currentPrice * (1 + Math.random() * 0.002);
-          const orderBookSupport = currentPrice * (1 - Math.random() * 0.002);
-          const volatility = Math.random() * 0.01; // 0% to 1% simulated local volatility
+          if (techSignal.rsi < 35) bullishConfluence += 10 * techMult; // Oversold
+          else if (techSignal.rsi < 48) bullishConfluence += 4 * techMult;
+          else if (techSignal.rsi > 65) bearishConfluence += 10 * techMult; // Overbought
+          else if (techSignal.rsi > 52) bearishConfluence += 4 * techMult;
           
-          let action: "BUY" | "SELL" | "HOLD" = "HOLD";
-          let confidence = 0;
-          let reason = "Awaiting confluence";
-          
-          const aiMult = aiWeightRef.current / 50;
-          const techMult = (100 - aiWeightRef.current) / 50;
-          
-          let bullishConfluence = 0;
-          let bearishConfluence = 0;
-
-          // AI Consensus
-          if (signalRaw.includes("strong bullish")) bullishConfluence += 15 * aiMult;
-          else if (signalRaw.includes("bullish")) bullishConfluence += 8 * aiMult;
-          else if (signalRaw.includes("strong bearish")) bearishConfluence += 15 * aiMult;
-          else if (signalRaw.includes("bearish")) bearishConfluence += 8 * aiMult;
-
-          // Technical Confluence
-          if (techSignal) {
-            if (techSignal.trend === 'up') bullishConfluence += 4 * techMult;
-            if (techSignal.trend === 'down') bearishConfluence += 4 * techMult;
-            
-            if (techSignal.rsi < 30) bullishConfluence += 8 * techMult; // Oversold
-            else if (techSignal.rsi < 45) bullishConfluence += 3 * techMult;
-            else if (techSignal.rsi > 70) bearishConfluence += 8 * techMult; // Overbought
-            else if (techSignal.rsi > 55) bearishConfluence += 3 * techMult;
-            
-            if (techSignal.macdSignal === 'bullish') bullishConfluence += 5 * techMult;
-            if (techSignal.macdSignal === 'bearish') bearishConfluence += 5 * techMult;
-          }
-
-          // Order Book & Volatility (Liquidity Traps)
-          // If price is too close to resistance, penalize bullish
-          if (currentPrice > orderBookResistance * 0.999) {
-             bearishConfluence += 3; // Trap detected
-             reason = "Order block resistance approaching";
-          }
-          if (currentPrice < orderBookSupport * 1.001) {
-             bullishConfluence += 3;
-             reason = "Liquidity wall support detected";
-          }
-
-          // Synergy Bonus (Both aligned)
-          if (bullishConfluence > 10 && techSignal?.trend === 'up') bullishConfluence += 3;
-          if (bearishConfluence > 10 && techSignal?.trend === 'down') bearishConfluence += 3;
-
-          // Threshold Logic
-          const baseThreshold = 4; // base scale
-          // Higher volatility = requires higher confidence threshold
-          const adaptiveThreshold = (baseThreshold * confidenceThresholdRef.current) + (volatility * 200);
-
-          let stopLossPctVal = stopLossPct / 100;
-          let takeProfitPctVal = takeProfitPct / 100;
-
-          // Dynamic Risk Management based on Volatility
-          // Wider stops in high volatility
-          if (volatility > 0.005) {
-             stopLossPctVal = Math.min(0.05, stopLossPctVal * 1.5);
-             takeProfitPctVal = Math.max(takeProfitPctVal, stopLossPctVal * 2);
-          }
-
-          // Risk Management: Enforce Risk:Reward >= 1:2
-          if (takeProfitPctVal < stopLossPctVal * 2) {
-             takeProfitPctVal = stopLossPctVal * 2;
-          }
-
-          // exceptionally strong one-sided signal check (e.g. AI is extremely strong but tech is weak, or vice versa)
-          const isExceptionallyBullish = bullishConfluence >= (adaptiveThreshold * 1.5);
-          const isExceptionallyBearish = bearishConfluence >= (adaptiveThreshold * 1.5);
-
-          if ((bullishConfluence > bearishConfluence && bullishConfluence >= adaptiveThreshold) || isExceptionallyBullish) {
-            action = "BUY";
-            confidence = Math.min(100, bullishConfluence * 3);
-            reason = isExceptionallyBullish ? "Exceptionally strong bullish momentum" : "Bullish confluence aligned across dimensions";
-          } else if ((bearishConfluence > bullishConfluence && bearishConfluence >= adaptiveThreshold) || isExceptionallyBearish) {
-            action = "SELL";
-            confidence = Math.min(100, bearishConfluence * 3);
-            reason = isExceptionallyBearish ? "Exceptionally strong bearish momentum" : "Bearish rejection and momentum confirmed";
-          } else {
-            action = "HOLD";
-            confidence = 100 - Math.max(bullishConfluence, bearishConfluence);
-            reason = "Awaiting multi-layer confirmation";
-          }
-
-          // Define execution parameters
-          let tradeQuantity = 0;
-          const currentBalance = mtBalance || 0;
-          
-          if (isLive) {
-            // Use user-defined lot size for MT5
-            tradeQuantity = fixedLotSizeRef.current;
-          } else {
-             // Position Sizing: Scale based on confidence.
-             // if confidence is 100%, risk the full 'riskPerTrade' %.
-             const riskMultiplier = Math.max(0.1, confidence / 100);
-             tradeQuantity = currentBalance * (riskPerTradeRef.current / 100) * riskMultiplier;
-             
-             // Enforce minimum position size
-             if (tradeQuantity < minPositionSizeRef.current) {
-               tradeQuantity = minPositionSizeRef.current;
-             }
-             
-             // Safety check: ensure we don't exceed balance
-             if (tradeQuantity > currentBalance * 0.9) {
-               tradeQuantity = currentBalance * 0.9;
-             }
-          }
-
-          // Generate requested output structure
-          const executionSignal = {
-            action,
-            confidence: Number(confidence.toFixed(1)),
-            entry_price: currentPrice,
-            stop_loss: action === "BUY" ? currentPrice * (1 - stopLossPctVal) : currentPrice * (1 + stopLossPctVal),
-            take_profit: action === "BUY" ? currentPrice * (1 + takeProfitPctVal) : currentPrice * (1 - takeProfitPctVal),
-            position_size: tradeQuantity,
-            reason
-          };
-
-          if (active) {
-            setTimeout(() => {
-               setLastConfidence(executionSignal.confidence);
-            }, 0);
-          }
-
-          // Execute only if action is BUY or SELL
-          if (executionSignal.action !== "HOLD") {
-            executeTrade(executionSignal.action);
-          }
+          if (techSignal.macdSignal === 'bullish') bullishConfluence += 7 * techMult;
+          if (techSignal.macdSignal === 'bearish') bearishConfluence += 7 * techMult;
         }
 
-        return newPositions;
-      });
+        // Order Book & Volatility (Liquidity Traps)
+        if (currentPrice > orderBookResistance * 0.999) bearishConfluence += 4;
+        if (currentPrice < orderBookSupport * 1.001) bullishConfluence += 4;
+
+        // Synergy Bonus (Both aligned)
+        if (bullishConfluence > 12 && techSignal?.trend === 'up') bullishConfluence += 4;
+        if (bearishConfluence > 12 && techSignal?.trend === 'down') bearishConfluence += 4;
+
+        // Threshold Logic
+        const baseThreshold = 6; // slightly lower base
+        const adaptiveThreshold = (baseThreshold * confidenceThresholdRef.current) + (volatility * 150);
+
+        const stopLossPctVal = stopLossPctRef.current / 100;
+        const takeProfitPctVal = takeProfitPctRef.current / 100;
+
+        // exceptionally strong one-sided signal check
+        const isExceptionallyBullish = bullishConfluence >= (adaptiveThreshold * 1.4);
+        const isExceptionallyBearish = bearishConfluence >= (adaptiveThreshold * 1.4);
+
+        if ((bullishConfluence > bearishConfluence && bullishConfluence >= adaptiveThreshold) || isExceptionallyBullish) {
+          action = "BUY";
+          confidence = Math.min(100, bullishConfluence * 3);
+          reason = isExceptionallyBullish ? "Exception momentum vector" : "Bullish confluence aligned";
+        } else if ((bearishConfluence > bullishConfluence && bearishConfluence >= adaptiveThreshold) || isExceptionallyBearish) {
+          action = "SELL";
+          confidence = Math.min(100, bearishConfluence * 3);
+          reason = isExceptionallyBearish ? "Exception reversal vector" : "Bearish confluence aligned";
+        } else {
+          action = "HOLD";
+          confidence = 100 - Math.max(bullishConfluence, bearishConfluence);
+          reason = "Quantum analysis underway";
+        }
+
+        // Define execution parameters
+        let tradeQuantity = 0;
+        
+        if (isLive) {
+          // Use user-defined lot size for MT5
+          tradeQuantity = fixedLotSizeRef.current;
+        } else {
+           const riskMultiplier = Math.max(0.1, confidence / 100);
+           tradeQuantity = currentBalance * (riskPerTradeRef.current / 100) * riskMultiplier;
+           if (tradeQuantity < minPositionSizeRef.current) tradeQuantity = minPositionSizeRef.current;
+           if (tradeQuantity > currentBalance * 0.9) tradeQuantity = currentBalance * 0.9;
+        }
+
+        // Generate requested output structure
+        const executionSignal = {
+          action,
+          confidence: Number(confidence.toFixed(1)),
+          entry_price: currentPrice,
+          position_size: tradeQuantity,
+          reason,
+          sl: action === "BUY" ? currentPrice * (1 - stopLossPctVal) : currentPrice * (1 + stopLossPctVal),
+          tp: action === "BUY" ? currentPrice * (1 + takeProfitPctVal) : currentPrice * (1 - takeProfitPctVal)
+        };
+
+        if (activeRef.current) {
+           setLastConfidence(executionSignal.confidence);
+        }
+
+        // Execute only if action is BUY or SELL
+        if (executionSignal.action !== "HOLD") {
+          executeTrade(executionSignal.action, executionSignal.sl, executionSignal.tp);
+        }
+      }
     }, speedMs);
 
     return () => clearInterval(timer);
   }, [
     active,
-    walletConnected,
     speedMs,
     takeProfitPct,
     stopLossPct,
-    setBalance,
     symbol,
-    maxPositions,
   ]);
 
   return (

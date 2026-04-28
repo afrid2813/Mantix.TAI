@@ -9,12 +9,14 @@ export async function executeTrade(params: any) {
     side,
     quantity,
     balance,
+    sl,
+    tp,
   } = params;
 
   // Step 1: Risk Check
   const risk = checkRisk({
     balance,
-    riskPercent: 2,
+    riskPercent: 1, // Scaled down based on project needs
     tradeAmount: quantity,
   });
 
@@ -30,6 +32,8 @@ export async function executeTrade(params: any) {
       symbol,
       side,
       quantity,
+      sl,
+      tp,
     });
     return { success: true, data: result };
   } catch (err: any) {

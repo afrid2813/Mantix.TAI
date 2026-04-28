@@ -44,44 +44,40 @@ export function detectSignal(indicators: any, marketData: CandleData[]): Strateg
   const latestCandle = marketData[marketData.length - 1];
   const { rsi, macd, stoch, bb, sma } = indicators;
 
-  // 1. Hyper-Oversold Reversal (High Probability Long)
-  // Confluence: RSI < 25, Stoch < 20 with K>D cross, MACD histogram shifting positive, Price near/below lower BB
-  if (rsi < 25 && stoch.k < 20 && stoch.d < 20 && stoch.k > stoch.d && macd.hist > -0.5 && latestCandle.close <= bb.lower * 1.002) {
+  // 1. Oversold Reversal (Moderate Sensitivity)
+  if (rsi < 35 && stoch.k < 30 && macd.hist > -1 && latestCandle.close <= bb.lower * 1.01) {
     return {
       type: SignalType.BUY,
-      reason: `High Conviction Buy: Hyper Oversold (RSI: ${rsi.toFixed(1)}) with Stoch Convergence and Lower BB Support. Expected Win Rate: 88%`,
+      reason: `Bullish Reversal: RSI Oversold (${rsi.toFixed(1)}) and Price at Lower BB Support.`,
       timestamp: latestCandle.time * 1000
     };
   }
 
-  // 2. Hyper-Overbought Rejection (High Probability Short)
-  // Confluence: RSI > 75, Stoch > 80 with K<D cross, MACD histogram shifting negative, Price near/above upper BB
-  if (rsi > 75 && stoch.k > 80 && stoch.d > 80 && stoch.k < stoch.d && macd.hist < 0.5 && latestCandle.close >= bb.upper * 0.998) {
+  // 2. Overbought Rejection (Moderate Sensitivity)
+  if (rsi > 65 && stoch.k > 70 && macd.hist < 1 && latestCandle.close >= bb.upper * 0.99) {
     return {
       type: SignalType.SELL,
-      reason: `High Conviction Short: Hyper Overbought (RSI: ${rsi.toFixed(1)}) with Stoch Divergence and Upper BB Resistance. Expected Win Rate: 85%`,
+      reason: `Bearish Rejection: RSI Overbought (${rsi.toFixed(1)}) and Price at Upper BB Resistance.`,
       timestamp: latestCandle.time * 1000
     };
   }
 
-  // 3. Golden Cross Trend Continuation (High Probability Long)
-  // Confluence: SMA20 > SMA50 (Uptrend), RSI reset to ~40-50, MACD crossing bullishly
-  if (sma && sma.sma20 > sma.sma50 && rsi > 40 && rsi < 55 && macd.macdLine > macd.signalLine && macd.hist > 0 && macd.hist < 2) {
+  // 3. Trend Continuation
+  if (sma && sma.sma20 > sma.sma50 && macd.macdLine > macd.signalLine && rsi > 45 && rsi < 65) {
       return {
           type: SignalType.BUY,
-          reason: `Trend Continuation: Golden Cross alignment with RSI reset and accelerating MACD momentum. Expected Win Rate: 82%`,
+          reason: `Trend Following: Strong Golden Cross and Positive MACD Momentum.`,
           timestamp: latestCandle.time * 1000
       };
   }
 
-  // 4. Death Cross Trend Continuation (High Probability Short)
-  if (sma && sma.sma20 < sma.sma50 && rsi < 60 && rsi > 45 && macd.macdLine < macd.signalLine && macd.hist < 0 && macd.hist > -2) {
+  if (sma && sma.sma20 < sma.sma50 && macd.macdLine < macd.signalLine && rsi < 55 && rsi > 35) {
       return {
           type: SignalType.SELL,
-          reason: `Trend Breakdown: Death Cross alignment with bearish MACD expansion. Expected Win Rate: 83%`,
+          reason: `Trend Breakdown: Death Cross confirmed by Bearish Momentum.`,
           timestamp: latestCandle.time * 1000
       };
   }
 
-  return { type: SignalType.NEUTRAL, reason: 'Waiting for high-probability setup', timestamp: Date.now() };
+  return { type: SignalType.NEUTRAL, reason: 'Market consolidation', timestamp: Date.now() };
 }
